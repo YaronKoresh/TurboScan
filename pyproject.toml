@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turboscan"
+version = "0.1.0"
+description = "TurboScan is a massively parallelized, GPU-accelerated, JIT-optimized execution framework that uses ALL available system resources for lightning-fast Python execution"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    # Core parallel execution 
+    "ray[default]>=2.9.0",
+
+    # GPU acceleration 
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+
+    # JIT compilation 
+    "numba>=0.58.0",
+    "llvmlite>=0.41.0",
+
+    # Vectorized operations 
+    "numpy>=1.24.0",
+
+    # Progress display 
+    "rich>=13.0.0",
+
+    # Persistent caching 
+    "diskcache>=5.6.0",
+
+    # System monitoring 
+    "psutil>=5.9.0",
+
+    # Enhanced serialization 
+    "cloudpickle>=3.0.0,<4.0.0",
+    "loky>=3.0.0,<4.0.0",
+
+    # Cython compilation support 
+    "cython>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "hypothesis>=6.90.0",
+]
+
+[tool.uv]
+index-url = "https://pypi.org/simple"
+extra-index-url = ["https://pypi.nvidia.com/"]

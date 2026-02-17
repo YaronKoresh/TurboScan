@@ -77,12 +77,11 @@ class TestFunctionAnalyzer:
     def test_analyzes_lambdas(self) -> None:
         """Should correctly handle lambdas."""
 
-        def func(x):
-            return x + 1
+        my_lambda = lambda x: x + 1
 
-        analysis = FunctionAnalyzer.analyze(func)
+        analysis = FunctionAnalyzer.analyze(my_lambda)
         assert analysis.is_lambda is True
-        # Cloudpickle is available in dev deps, so this should be picklable
+        assert analysis.is_local_func is True
         assert analysis.is_picklable is True
 
     def test_caching_works(self) -> None:

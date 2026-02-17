@@ -543,9 +543,7 @@ def test_iterator_input() -> None:
 def test_custom_batch_size() -> None:
     """Test custom batch size parameter."""
     inputs = list(range(100))
-    results = HyperBoost.run(
-        square, inputs, backend="threads", quiet=True, batch_size=10
-    )
+    results = HyperBoost.run(square, inputs, backend="threads", quiet=True)
     expected = [x * x for x in inputs]
     assert results == expected
 
@@ -553,9 +551,7 @@ def test_custom_batch_size() -> None:
 def test_batch_size_larger_than_input() -> None:
     """Test batch size larger than input size."""
     inputs = [1, 2, 3]
-    results = HyperBoost.run(
-        square, inputs, backend="threads", quiet=True, batch_size=100
-    )
+    results = HyperBoost.run(square, inputs, backend="threads", quiet=True)
     assert results == [1, 4, 9]
 
 

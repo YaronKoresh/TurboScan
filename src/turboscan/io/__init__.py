@@ -1,1 +1,3 @@
-from turboscan.io.file_reader import FastFileReader, FAST_READER
+from turboscan.io.file_reader import FAST_READER, FastFileReader
+
+__all__ = ["FAST_READER", "FastFileReader"]

@@ -1,0 +1,18 @@
+bug:
+  - head-branch: ['^fix', '^bug', '^hotfix', '^patch']
+
+enhancement:
+  - head-branch: ['^feat', '^add']
+
+documentation:
+  - head-branch: ['^doc']
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - '**/*.markdown'
+      - '**/*.txt'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'CONTRIBUTING.md'
+      - 'mkdocs.yml'
+      - '**/*.rst'

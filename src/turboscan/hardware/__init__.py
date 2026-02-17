@@ -1,1 +1,3 @@
-from turboscan.hardware.config import HardwareConfig, detect_hardware, HARDWARE
+from turboscan.hardware.config import HARDWARE, HardwareConfig, detect_hardware
+
+__all__ = ["HARDWARE", "HardwareConfig", "detect_hardware"]

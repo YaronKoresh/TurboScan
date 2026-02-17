@@ -1,9 +1,13 @@
-import pytest
 import ast
-from turboscan.jit.injector import JITInjector, JIT_INJECTOR, NUMBA_AVAIL
+
+import pytest
+
+from turboscan.jit.injector import JIT_INJECTOR, NUMBA_AVAIL, JITInjector
+
 
 def parse_code(code_str):
     return ast.parse(code_str).body[0]
+
 
 def parse_module(code_str):
     return ast.parse(code_str)
@@ -13,7 +17,8 @@ def parse_module(code_str):
 # MATH HEAVY DETECTION TESTS
 # ============================================================================
 
-def test_detects_math_heavy():
+
+def test_detects_math_heavy() -> None:
     code = """
 def heavy(x):
     return math.sin(x) * math.cos(x) + np.tan(x)
@@ -22,7 +27,7 @@ def heavy(x):
     assert JIT_INJECTOR._is_math_heavy(node) is True
 
 
-def test_not_math_heavy_simple():
+def test_not_math_heavy_simple() -> None:
     """Simple function without math should not be math heavy."""
     code = """
 def simple(x):
@@ -32,7 +37,7 @@ def simple(x):
     assert JIT_INJECTOR._is_math_heavy(node) is False
 
 
-def test_math_heavy_with_numpy():
+def test_math_heavy_with_numpy() -> None:
     """NumPy operations should count as math heavy."""
     code = """
 def numpy_ops(arr):
@@ -42,7 +47,7 @@ def numpy_ops(arr):
     assert JIT_INJECTOR._is_math_heavy(node) is True
 
 
-def test_math_heavy_with_binops():
+def test_math_heavy_with_binops() -> None:
     """Multiple binary operations should be math heavy."""
     code = """
 def many_ops(a, b, c, d):
@@ -56,7 +61,8 @@ def many_ops(a, b, c, d):
 # NUMBA COMPATIBILITY TESTS
 # ============================================================================
 
-def test_rejects_strings():
+
+def test_rejects_strings() -> None:
     """Should reject functions doing string manipulation."""
     code = """
 def stringy(x):
@@ -66,7 +72,7 @@ def stringy(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_classes():
+def test_rejects_classes() -> None:
     """Should reject functions defining classes inside."""
     code = """
 def has_class():
@@ -77,7 +83,7 @@ def has_class():
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_async():
+def test_rejects_async() -> None:
     """Should reject async functions."""
     code = """
 async def async_func(x):
@@ -87,7 +93,7 @@ async def async_func(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_yield():
+def test_rejects_yield() -> None:
     """Should reject generator functions."""
     code = """
 def gen_func(x):
@@ -98,7 +104,7 @@ def gen_func(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_self_method():
+def test_rejects_self_method() -> None:
     """Should reject instance methods (with self)."""
     code = """
 def method(self, x):
@@ -108,7 +114,7 @@ def method(self, x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_property_decorator():
+def test_rejects_property_decorator() -> None:
     """Should reject functions with @property decorator."""
     code = """
 @property
@@ -119,7 +125,7 @@ def prop(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_contextmanager():
+def test_rejects_contextmanager() -> None:
     """Should reject functions with @contextmanager decorator."""
     code = """
 @contextmanager
@@ -130,7 +136,7 @@ def ctx(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_accepts_simple_numeric():
+def test_accepts_simple_numeric() -> None:
     """Should accept simple numeric functions."""
     code = """
 def numeric(x, y):
@@ -141,11 +147,12 @@ def numeric(x, y):
     result = JIT_INJECTOR._is_numba_compatible(node)
     # If numba not available, should return False
     from turboscan.jit.injector import NUMBA_AVAIL
+
     if not NUMBA_AVAIL:
         assert result is False
 
 
-def test_rejects_np_clip():
+def test_rejects_np_clip() -> None:
     """Should reject functions using np.clip as it doesn't support scalars in Numba."""
     code = """
 def warp_func(freqs):
@@ -156,7 +163,7 @@ def warp_func(freqs):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_numpy_clip():
+def test_rejects_numpy_clip() -> None:
     """Should reject functions using numpy.clip as it doesn't support scalars in Numba."""
     code = """
 def clamp_values(x, lo, hi):
@@ -166,7 +173,7 @@ def clamp_values(x, lo, hi):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_np_reshape():
+def test_rejects_np_reshape() -> None:
     """Should reject functions using np.reshape as it doesn't support scalars in Numba."""
     code = """
 def reshape_data(x):
@@ -176,7 +183,7 @@ def reshape_data(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_np_ndenumerate():
+def test_rejects_np_ndenumerate() -> None:
     """Should reject functions using np.ndenumerate as it doesn't support scalars in Numba."""
     code = """
 def enum_array(x):
@@ -188,7 +195,7 @@ def enum_array(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_np_transpose():
+def test_rejects_np_transpose() -> None:
     """Should reject functions using np.transpose."""
     code = """
 def transpose_data(x):
@@ -198,7 +205,7 @@ def transpose_data(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_with_errstate():
+def test_rejects_with_errstate() -> None:
     """Should reject functions using np.errstate context manager."""
     code = """
 def with_errstate(x):
@@ -209,7 +216,7 @@ def with_errstate(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-def test_rejects_with_open():
+def test_rejects_with_open() -> None:
     """Should reject functions using open()."""
     code = """
 def with_open(x):
@@ -224,8 +231,9 @@ def with_open(x):
 # VECTORIZABLE DETECTION TESTS
 # ============================================================================
 
+
 @pytest.mark.skipif(not NUMBA_AVAIL, reason="Numba not available")
-def test_detects_vectorizable():
+def test_detects_vectorizable() -> None:
     """Should detect simple element-wise operations with type hints."""
     code = """
 def vec_op(x: float, y: float) -> float:
@@ -235,7 +243,7 @@ def vec_op(x: float, y: float) -> float:
     assert JIT_INJECTOR._is_vectorizable(node) is True
 
 
-def test_not_vectorizable_no_hints():
+def test_not_vectorizable_no_hints() -> None:
     """Should reject vectorizable without type hints."""
     code = """
 def no_hints(x, y):
@@ -245,7 +253,7 @@ def no_hints(x, y):
     assert JIT_INJECTOR._is_vectorizable(node) is False
 
 
-def test_not_vectorizable_wrong_types():
+def test_not_vectorizable_wrong_types() -> None:
     """Should reject vectorizable with non-numeric type hints."""
     code = """
 def wrong_types(x: str, y: str) -> str:
@@ -255,7 +263,7 @@ def wrong_types(x: str, y: str) -> str:
     assert JIT_INJECTOR._is_vectorizable(node) is False
 
 
-def test_not_vectorizable_too_many_args():
+def test_not_vectorizable_too_many_args() -> None:
     """Should reject vectorizable with too many arguments."""
     code = """
 def too_many(a: float, b: float, c: float, d: float, e: float, f: float, g: float, h: float, i: float, j: float, k: float, l: float, m: float, n: float, o: float, p: float, q: float, r: float, s: float, t: float, u: float) -> float:
@@ -266,7 +274,7 @@ def too_many(a: float, b: float, c: float, d: float, e: float, f: float, g: floa
 
 
 @pytest.mark.skipif(not NUMBA_AVAIL, reason="Numba not available")
-def test_vectorizable_int_types():
+def test_vectorizable_int_types() -> None:
     """Should accept vectorizable with int types."""
     code = """
 def int_op(x: int, y: int) -> int:
@@ -277,7 +285,7 @@ def int_op(x: int, y: int) -> int:
 
 
 @pytest.mark.skipif(not NUMBA_AVAIL, reason="Numba not available")
-def test_vectorizable_complex_types():
+def test_vectorizable_complex_types() -> None:
     """Should accept vectorizable with complex types."""
     code = """
 def complex_op(x: complex, y: complex) -> complex:
@@ -287,7 +295,7 @@ def complex_op(x: complex, y: complex) -> complex:
     assert JIT_INJECTOR._is_vectorizable(node) is True
 
 
-def test_vectorizable_bool_types():
+def test_vectorizable_bool_types() -> None:
     """Should accept vectorizable with bool types."""
     code = """
 def bool_op(x: bool, y: bool) -> bool:
@@ -295,10 +303,10 @@ def bool_op(x: bool, y: bool) -> bool:
     """
     node = parse_code(code)
     # Note: this might fail the computation check
-    result = JIT_INJECTOR._is_vectorizable(node)
+    JIT_INJECTOR._is_vectorizable(node)
 
 
-def test_not_vectorizable_no_computation():
+def test_not_vectorizable_no_computation() -> None:
     """Should reject vectorizable without any computation."""
     code = """
 def no_compute(x: float) -> float:
@@ -312,7 +320,8 @@ def no_compute(x: float) -> float:
 # LOOP DETECTION TESTS
 # ============================================================================
 
-def test_has_loops_for():
+
+def test_has_loops_for() -> None:
     """Should detect for loops."""
     code = """
 def with_for(x):
@@ -324,7 +333,7 @@ def with_for(x):
     assert JIT_INJECTOR._has_loops(node) is True
 
 
-def test_has_loops_while():
+def test_has_loops_while() -> None:
     """Should detect while loops."""
     code = """
 def with_while(x):
@@ -336,7 +345,7 @@ def with_while(x):
     assert JIT_INJECTOR._has_loops(node) is True
 
 
-def test_no_loops():
+def test_no_loops() -> None:
     """Should not detect loops in simple function."""
     code = """
 def no_loops(x):
@@ -350,7 +359,8 @@ def no_loops(x):
 # LOOP CONDITIONAL ASSIGNS TESTS
 # ============================================================================
 
-def test_has_loop_conditional_assigns():
+
+def test_has_loop_conditional_assigns() -> None:
     """Should detect conditional assignments in loops."""
     code = """
 def conditional_in_loop(x):
@@ -365,7 +375,7 @@ def conditional_in_loop(x):
     assert JIT_INJECTOR._has_loop_conditional_assigns(node) is True
 
 
-def test_no_loop_conditional_assigns():
+def test_no_loop_conditional_assigns() -> None:
     """Should not detect conditional assigns when not used."""
     code = """
 def no_conditional(x):
@@ -382,14 +392,15 @@ def no_conditional(x):
 # INJECT TESTS
 # ============================================================================
 
-def test_inject_creates_new_injector():
+
+def test_inject_creates_new_injector() -> None:
     """Test creating a new JITInjector instance."""
     injector = JITInjector()
     assert injector.jit_count == 0
     assert injector.vectorize_count == 0
 
 
-def test_inject_module():
+def test_inject_module() -> None:
     """Test injecting JIT into a module."""
     code = """
 def simple(x):
@@ -405,7 +416,7 @@ def simple(x):
     assert result is not None
 
 
-def test_inject_skips_hyper_prefix():
+def test_inject_skips_hyper_prefix() -> None:
     """Should skip functions with _hyper_ prefix."""
     code = """
 def _hyper_worker_1(x):
@@ -419,7 +430,7 @@ def _hyper_worker_1(x):
     assert injector.jit_count == 0
 
 
-def test_inject_skips_batch_prefix():
+def test_inject_skips_batch_prefix() -> None:
     """Should skip functions with _batch_ prefix."""
     code = """
 def _batch_process(x):
@@ -433,7 +444,7 @@ def _batch_process(x):
     assert injector.jit_count == 0
 
 
-def test_inject_skips_already_decorated():
+def test_inject_skips_already_decorated() -> None:
     """Should skip functions already decorated with njit."""
     code = """
 @njit
@@ -448,7 +459,7 @@ def already_jit(x):
     assert injector.jit_count == 0
 
 
-def test_inject_skips_vectorize_decorated():
+def test_inject_skips_vectorize_decorated() -> None:
     """Should skip functions already decorated with vectorize."""
     code = """
 @vectorize
@@ -461,8 +472,9 @@ def already_vec(x: float) -> float:
     assert injector.vectorize_count == 0
 
 
-def test_global_jit_injector():
+def test_global_jit_injector() -> None:
     """Test that global JIT_INJECTOR is available."""
     from turboscan.jit.injector import JIT_INJECTOR
+
     assert JIT_INJECTOR is not None
     assert isinstance(JIT_INJECTOR, JITInjector)

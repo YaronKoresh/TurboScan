@@ -1,12 +1,15 @@
-import pytest
 import ast
-import sys
-from unittest.mock import patch, MagicMock
-from turboscan.ast_transform.parallelizer import HyperAutoParallelizer, remove_lru_cache_from_ast
+from unittest.mock import MagicMock, patch
+
+from turboscan.ast_transform.parallelizer import (
+    HyperAutoParallelizer,
+    remove_lru_cache_from_ast,
+)
 
 # ============================================================================
 # UTILITIES
 # ============================================================================
+
 
 def transform_code(code: str, parallelizer=None) -> ast.Module:
     """Helper to parse, transform, and fix locations for code snippets."""
@@ -17,6 +20,7 @@ def transform_code(code: str, parallelizer=None) -> ast.Module:
     ast.fix_missing_locations(new_tree)
     return new_tree
 
+
 def get_node_of_type(tree: ast.Module, type_cls):
     """Finds the first node of a specific type."""
     for node in ast.walk(tree):
@@ -24,24 +28,30 @@ def get_node_of_type(tree: ast.Module, type_cls):
             return node
     return None
 
+
 def has_function_call(tree: ast.Module, func_name: str) -> bool:
     """Checks if a function with specific name is called in the tree."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id == func_name:
                 return True
-            if isinstance(node.func, ast.Attribute) and node.func.attr == func_name:
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == func_name
+            ):
                 return True
     return False
+
 
 # ============================================================================
 # TEST SUITE 1: LRU CACHE REMOVAL
 # ============================================================================
 
+
 class TestLRUCacheRemoval:
     """Tests the critical fix for multiprocessing serialization."""
 
-    def test_remove_simple_lru_cache(self):
+    def test_remove_simple_lru_cache(self) -> None:
         code = """
 @lru_cache
 def func(x): pass
@@ -51,7 +61,7 @@ def func(x): pass
         func = tree.body[0]
         assert len(func.decorator_list) == 0
 
-    def test_remove_called_lru_cache(self):
+    def test_remove_called_lru_cache(self) -> None:
         code = """
 @lru_cache(maxsize=128)
 def func(x): pass
@@ -60,7 +70,7 @@ def func(x): pass
         assert count == 1
         assert len(tree.body[0].decorator_list) == 0
 
-    def test_remove_functools_lru_cache(self):
+    def test_remove_functools_lru_cache(self) -> None:
         code = """
 @functools.lru_cache(maxsize=None)
 def func(x): pass
@@ -69,7 +79,7 @@ def func(x): pass
         assert count == 1
         assert len(tree.body[0].decorator_list) == 0
 
-    def test_keep_other_decorators(self):
+    def test_keep_other_decorators(self) -> None:
         code = """
 @other_decorator
 @lru_cache
@@ -80,17 +90,19 @@ def func(x): pass
         assert count == 1
         decs = tree.body[0].decorator_list
         assert len(decs) == 2
-        assert decs[0].id == 'other_decorator'
-        assert decs[1].id == 'third_decorator'
+        assert decs[0].id == "other_decorator"
+        assert decs[1].id == "third_decorator"
+
 
 # ============================================================================
 # TEST SUITE 2: SAFETY & UNSAFE PATTERNS
 # ============================================================================
 
+
 class TestParallelizerSafety:
     """Tests logic that determines when NOT to parallelize."""
 
-    def test_skip_unsafe_control_flow(self):
+    def test_skip_unsafe_control_flow(self) -> None:
         """Loops with break/continue/return should be skipped."""
         examples = [
             "for i in range(10): break",
@@ -104,9 +116,9 @@ class TestParallelizerSafety:
             transform_code(code, p)
             assert p.loop_counter == 0, f"Should skipped unsafe flow: {code}"
 
-    def test_skip_loop_carried_dependency(self):
+    def test_skip_loop_carried_dependency(self) -> None:
         """
-        Loops where iteration N depends on variables modified in N-1 
+        Loops where iteration N depends on variables modified in N-1
         should typically be skipped if detected as 'complex outer writes'.
         """
         # CRITICAL FIX: Wrapped in function so Scope Analyzer works
@@ -119,11 +131,11 @@ def func():
         """
         p = HyperAutoParallelizer()
         transform_code(code, p)
-        # The logic inside _has_problematic_loop_patterns should catch 
+        # The logic inside _has_problematic_loop_patterns should catch
         # that 'prev' is an outer variable being assigned inside the loop.
         assert p.loop_counter == 0
 
-    def test_skip_complex_outer_writes(self):
+    def test_skip_complex_outer_writes(self) -> None:
         """Writing to object attributes or subscripts of outer vars is usually unsafe."""
         code = """
 class A: pass
@@ -135,7 +147,7 @@ for i in range(10):
         transform_code(code, p)
         assert p.loop_counter == 0
 
-    def test_skip_loop_var_indexed_assignment(self):
+    def test_skip_loop_var_indexed_assignment(self) -> None:
         """Loops using loop variable as index in assignment should not be parallelized."""
         code = """
 def process():
@@ -151,7 +163,7 @@ def process():
         # This should NOT be parallelized because of the indexed assignment pattern
         assert p.loop_counter == 0
 
-    def test_skip_complex_indexed_value(self):
+    def test_skip_complex_indexed_value(self) -> None:
         """Even single-statement loops with slicing in value should not be parallelized."""
         code = """
 def process():
@@ -164,14 +176,16 @@ def process():
         # This should NOT be parallelized due to complex slicing pattern
         assert p.loop_counter == 0
 
+
 # ============================================================================
 # TEST SUITE 3: VARIABLE CAPTURE & SCOPE
 # ============================================================================
 
+
 class TestVariableCapture:
     """Tests that the correct variables are passed to workers."""
 
-    def test_capture_outer_variable(self):
+    def test_capture_outer_variable(self) -> None:
         code = """
 factor = 10
 for i in range(100):
@@ -179,17 +193,17 @@ for i in range(100):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         # Find the worker definition
         worker = get_node_of_type(tree, ast.FunctionDef)
         assert worker is not None
-        
+
         # Check arguments
         arg_names = [a.arg for a in worker.args.args]
-        assert 'factor' in arg_names
-        assert 'i' in arg_names or 'item' in arg_names
+        assert "factor" in arg_names
+        assert "i" in arg_names or "item" in arg_names
 
-    def test_ignore_loop_local_variables(self):
+    def test_ignore_loop_local_variables(self) -> None:
         """Variables defined INSIDE the loop should NOT be passed as arguments."""
         code = """
 for i in range(100):
@@ -198,13 +212,13 @@ for i in range(100):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         worker = get_node_of_type(tree, ast.FunctionDef)
         arg_names = [a.arg for a in worker.args.args]
-        
-        assert 'temp' not in arg_names, "Captured loop-local variable 'temp'"
 
-    def test_capture_nested_read(self):
+        assert "temp" not in arg_names, "Captured loop-local variable 'temp'"
+
+    def test_capture_nested_read(self) -> None:
         """Should capture variables used deep inside expressions."""
         code = """
 config = {'val': 5}
@@ -213,19 +227,21 @@ for i in range(10):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         worker = get_node_of_type(tree, ast.FunctionDef)
         arg_names = [a.arg for a in worker.args.args]
-        assert 'config' in arg_names
+        assert "config" in arg_names
+
 
 # ============================================================================
 # TEST SUITE 4: ACCUMULATION PATTERNS
 # ============================================================================
 
+
 class TestAccumulation:
     """Tests the Map-Reduce logic (accumulating results)."""
 
-    def test_simple_sum_accumulation(self):
+    def test_simple_sum_accumulation(self) -> None:
         code = """
 total = 0
 for i in range(100):
@@ -233,21 +249,21 @@ for i in range(100):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         # Should generate a HyperBoost.run call
         assert p.loop_counter == 1
-        
+
         # Should have unpacking logic for results (deltas)
         # Look for the reduction loop generated by the parallelizer
         reduction_loop = None
         for node in ast.walk(tree):
             if isinstance(node, ast.For) and isinstance(node.target, ast.Name):
-                if node.target.id.startswith('_d_'):
+                if node.target.id.startswith("_d_"):
                     reduction_loop = node
                     break
         assert reduction_loop is not None, "Reduction loop not found"
 
-    def test_multiple_accumulations(self):
+    def test_multiple_accumulations(self) -> None:
         code = """
 sum_x = 0
 sum_y = 0
@@ -257,22 +273,22 @@ for i in range(10):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         assert p.loop_counter == 1
-        
+
         # Should return a tuple from worker
         worker = get_node_of_type(tree, ast.FunctionDef)
         returns = [n for n in ast.walk(worker) if isinstance(n, ast.Return)]
         assert len(returns) > 0
-        
+
         # Verify it returns a Tuple (sum_x, sum_y)
         ret_val = returns[0].value
         assert isinstance(ret_val, ast.Tuple)
         assert len(ret_val.elts) == 2
 
-    def test_ignore_local_aug_assign(self):
+    def test_ignore_local_aug_assign(self) -> None:
         """
-        If += is used on a variable defined INSIDE the loop, 
+        If += is used on a variable defined INSIDE the loop,
         it is NOT an accumulation.
         """
         code = """
@@ -283,30 +299,31 @@ for i in range(10):
         """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         # Should parallelize as a normal map (no reduction)
         worker = get_node_of_type(tree, ast.FunctionDef)
-        
+
         # Check worker returns
         returns = [n for n in ast.walk(worker) if isinstance(n, ast.Return)]
         # Should NOT return the local_acc
         if returns and returns[0].value is not None:
-             # It might return None or pass, but shouldn't be accumulating local_acc
-             pass
+            # It might return None or pass, but shouldn't be accumulating local_acc
+            pass
+
 
 # ============================================================================
 # TEST SUITE 5: VECTORIZATION & TASK PARALLELISM
 # ============================================================================
 
+
 class TestAdvancedFeatures:
-    
-    @patch('turboscan.ast_transform.parallelizer.NUMPY_AVAIL', True)
-    def test_vectorization_detection(self):
+    @patch("turboscan.ast_transform.parallelizer.NUMPY_AVAIL", True)
+    def test_vectorization_detection(self) -> None:
         """Simple range loops with pure math should be vectorized."""
         code = """
 for i in range(1000):
-    pass 
-# Note: Real vectorization logic is strict. 
+    pass
+# Note: Real vectorization logic is strict.
 # It requires pure loops without side effects.
         """
         p = HyperAutoParallelizer()
@@ -314,11 +331,11 @@ for i in range(1000):
         # or rely on actual logic. The actual logic checks for calls/ifs.
         # An empty pass loop is safe.
         p._is_vectorizable_loop = MagicMock(return_value=True)
-        
+
         transform_code(code, p)
         assert p.vectorized_count == 1
 
-    def test_task_parallelism_dispatcher(self):
+    def test_task_parallelism_dispatcher(self) -> None:
         """Sequence of independent calls should be batched."""
         code = """
 def main():
@@ -331,14 +348,14 @@ def main():
         # We need to simulate visiting a FunctionDef to populate scope
         tree = ast.parse(code)
         p.visit(tree)
-        
+
         # Check if task counter increased
         # Note: logic requires sufficient complexity or grouping
         # task1/2/3 are candidates.
         assert p.task_counter >= 1
         assert "_hyper_task_worker" in ast.dump(tree)
 
-    def test_task_parallelism_dependency_break(self):
+    def test_task_parallelism_dependency_break(self) -> None:
         """Dependencies should break task batches."""
         code = """
 def main():
@@ -349,23 +366,24 @@ def main():
         p = HyperAutoParallelizer()
         tree = ast.parse(code)
         p.visit(tree)
-        
+
         # Should likely create a batch for task1 (single?), then run task2, then batch task3?
-        # Or task1 runs, then task2 runs. 
+        # Or task1 runs, then task2 runs.
         # The logic optimizes sequences.
         # We check that it doesn't break semantics (which is hard to assert on AST structure alone without execution)
         # But we can check that task2 is NOT in the same batch as task1.
-        
+
         # For this test, we trust the logic if it generates valid python.
         assert isinstance(tree, ast.Module)
+
 
 # ============================================================================
 # TEST SUITE 6: END-TO-END TRANSFORMATIONS
 # ============================================================================
 
+
 class TestEndToEndTransformation:
-    
-    def test_nested_structure_handling(self):
+    def test_nested_structure_handling(self) -> None:
         """Ensure transformations work inside classes and functions."""
         code = """
 class processor:
@@ -376,10 +394,10 @@ class processor:
 """
         p = HyperAutoParallelizer()
         tree = transform_code(code, p)
-        
+
         # Should find worker
         assert p.loop_counter == 1
-        
+
         # Validate syntax validity of generated code
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
@@ -389,10 +407,11 @@ class processor:
 # TEST SUITE 7: ADDITIONAL SAFETY CHECKS
 # ============================================================================
 
+
 class TestAdditionalSafetyChecks:
     """Tests for additional safety patterns that should prevent parallelization."""
-    
-    def test_skip_yield_in_loop(self):
+
+    def test_skip_yield_in_loop(self) -> None:
         """Loops with yield should not be parallelized."""
         code = """
 def gen():
@@ -402,8 +421,8 @@ def gen():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         assert p.loop_counter == 0
-    
-    def test_skip_return_in_loop(self):
+
+    def test_skip_return_in_loop(self) -> None:
         """Loops with return should not be parallelized."""
         code = """
 def find_first_even(nums):
@@ -415,8 +434,8 @@ def find_first_even(nums):
         p = HyperAutoParallelizer()
         transform_code(code, p)
         assert p.loop_counter == 0
-    
-    def test_skip_continue_complex(self):
+
+    def test_skip_continue_complex(self) -> None:
         """Complex loops with continue should be handled carefully."""
         code = """
 def process():
@@ -428,10 +447,10 @@ def process():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         assert p.loop_counter == 0
-    
-    def test_skip_global_variable_write(self):
+
+    def test_skip_global_variable_write(self) -> None:
         """Loops writing to global variables should be handled.
-        
+
         Note: The parallelizer checks the loop body for global/nonlocal statements.
         If the global statement is outside the loop, it may still parallelize.
         This documents the current behavior.
@@ -449,10 +468,10 @@ def process():
         # is detected and parallelized. This is actually correct behavior since
         # accumulations are handled specially.
         # Verify the code compiles correctly
-    
-    def test_skip_nonlocal_variable_write(self):
+
+    def test_skip_nonlocal_variable_write(self) -> None:
         """Loops writing to nonlocal variables should be handled.
-        
+
         Note: Similar to global, if nonlocal is outside the loop body,
         the parallelizer may still attempt to parallelize.
         """
@@ -468,10 +487,10 @@ def outer():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         # Similar to global - nonlocal is outside loop body
-    
-    def test_global_in_loop_body_noted(self):
+
+    def test_global_in_loop_body_noted(self) -> None:
         """Global statement inside loop body behavior.
-        
+
         Note: The current implementation may still parallelize loops with
         global statements inside, depending on the overall pattern detection.
         This documents the current behavior.
@@ -494,10 +513,11 @@ def process():
 # TEST SUITE 8: INDEXED ASSIGNMENT PATTERNS
 # ============================================================================
 
+
 class TestIndexedAssignmentPatterns:
     """Tests for various indexed assignment patterns."""
-    
-    def test_simple_indexed_assignment_single_statement(self):
+
+    def test_simple_indexed_assignment_single_statement(self) -> None:
         """Simple indexed assignment with single statement may be allowed."""
         code = """
 def process():
@@ -509,8 +529,8 @@ def process():
         transform_code(code, p)
         # Simple pattern may be parallelized
         # This depends on implementation details
-    
-    def test_multi_statement_indexed_assignment_blocked(self):
+
+    def test_multi_statement_indexed_assignment_blocked(self) -> None:
         """Multi-statement indexed assignment should be blocked."""
         code = """
 def process():
@@ -523,8 +543,8 @@ def process():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         assert p.loop_counter == 0
-    
-    def test_slice_in_value_blocked(self):
+
+    def test_slice_in_value_blocked(self) -> None:
         """Indexed assignment with slice in value should be blocked."""
         code = """
 def process():
@@ -536,8 +556,8 @@ def process():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         assert p.loop_counter == 0
-    
-    def test_nested_index_operations(self):
+
+    def test_nested_index_operations(self) -> None:
         """Nested index operations should be handled correctly."""
         code = """
 def process():
@@ -555,10 +575,11 @@ def process():
 # TEST SUITE 9: ENUMERATE AND ZIP PATTERNS
 # ============================================================================
 
+
 class TestEnumerateZipPatterns:
     """Tests for enumerate and zip loop patterns."""
-    
-    def test_enumerate_basic(self):
+
+    def test_enumerate_basic(self) -> None:
         """Basic enumerate loop should be a candidate for parallelization."""
         code = """
 def process():
@@ -569,8 +590,8 @@ def process():
         p = HyperAutoParallelizer()
         transform_code(code, p)
         # enumerate loops are candidates
-    
-    def test_zip_basic(self):
+
+    def test_zip_basic(self) -> None:
         """Basic zip loop should be a candidate for parallelization."""
         code = """
 def process():
@@ -588,10 +609,11 @@ def process():
 # TEST SUITE 10: EDGE CASES
 # ============================================================================
 
+
 class TestEdgeCases:
     """Tests for edge cases and unusual patterns."""
-    
-    def test_empty_loop_body(self):
+
+    def test_empty_loop_body(self) -> None:
         """Loop with pass should not crash."""
         code = """
 def process():
@@ -603,8 +625,8 @@ def process():
         # Should not crash
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_single_expression_loop(self):
+
+    def test_single_expression_loop(self) -> None:
         """Loop with single expression should work."""
         code = """
 def process():
@@ -615,8 +637,8 @@ def process():
         tree = transform_code(code, p)
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_deeply_nested_loops(self):
+
+    def test_deeply_nested_loops(self) -> None:
         """Deeply nested loops should not crash."""
         code = """
 def process():
@@ -629,8 +651,8 @@ def process():
         tree = transform_code(code, p)
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_loop_with_try_except(self):
+
+    def test_loop_with_try_except(self) -> None:
         """Loop with try-except should be handled."""
         code = """
 def process():
@@ -645,8 +667,8 @@ def process():
         tree = transform_code(code, p)
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_loop_with_context_manager(self):
+
+    def test_loop_with_context_manager(self) -> None:
         """Loop with context manager should be handled."""
         code = """
 def process():
@@ -664,10 +686,11 @@ def process():
 # TEST SUITE 11: LRU CACHE REMOVAL COMPREHENSIVE
 # ============================================================================
 
+
 class TestLRUCacheRemovalComprehensive:
     """Comprehensive tests for LRU cache removal."""
-    
-    def test_remove_cache_decorator(self):
+
+    def test_remove_cache_decorator(self) -> None:
         """Test removing @cache (Python 3.9+) decorator."""
         code = """
 from functools import cache
@@ -676,10 +699,10 @@ from functools import cache
 def expensive(x):
     return x ** 2
         """
-        tree, count = remove_lru_cache_from_ast(ast.parse(code))
+        _tree, count = remove_lru_cache_from_ast(ast.parse(code))
         assert count == 1
-    
-    def test_remove_multiple_decorators_same_function(self):
+
+    def test_remove_multiple_decorators_same_function(self) -> None:
         """Test function with multiple decorators including lru_cache."""
         code = """
 from functools import lru_cache
@@ -687,19 +710,21 @@ def other_decorator(f): return f
 
 @other_decorator
 @lru_cache(maxsize=100)
-def func(x): 
+def func(x):
     return x
         """
         tree, count = remove_lru_cache_from_ast(ast.parse(code))
         assert count == 1
         # Check that other decorator is preserved
         # Find the 'func' function (second FunctionDef)
-        func_defs = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
-        func_node = next((f for f in func_defs if f.name == 'func'), None)
+        func_defs = [
+            node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        ]
+        func_node = next((f for f in func_defs if f.name == "func"), None)
         assert func_node is not None
         assert len(func_node.decorator_list) == 1
-    
-    def test_async_function_lru_cache(self):
+
+    def test_async_function_lru_cache(self) -> None:
         """Test that lru_cache on async functions is handled."""
         code = """
 from functools import lru_cache
@@ -708,10 +733,10 @@ from functools import lru_cache
 async def async_func(x):
     return x * 2
         """
-        tree, count = remove_lru_cache_from_ast(ast.parse(code))
+        _tree, count = remove_lru_cache_from_ast(ast.parse(code))
         assert count == 1
-    
-    def test_class_with_multiple_cached_methods(self):
+
+    def test_class_with_multiple_cached_methods(self) -> None:
         """Test class with multiple cached methods."""
         code = """
 from functools import lru_cache
@@ -720,18 +745,18 @@ class MyClass:
     @lru_cache(maxsize=10)
     def method_a(self, x):
         return x
-    
+
     @lru_cache(maxsize=20)
     def method_b(self, x):
         return x * 2
-    
+
     def normal_method(self, x):
         return x + 1
         """
-        tree, count = remove_lru_cache_from_ast(ast.parse(code))
+        _tree, count = remove_lru_cache_from_ast(ast.parse(code))
         assert count == 2
-    
-    def test_nested_class_lru_cache(self):
+
+    def test_nested_class_lru_cache(self) -> None:
         """Test nested class with lru_cache."""
         code = """
 from functools import lru_cache
@@ -742,7 +767,7 @@ class Outer:
         def cached(self, x):
             return x
         """
-        tree, count = remove_lru_cache_from_ast(ast.parse(code))
+        _tree, count = remove_lru_cache_from_ast(ast.parse(code))
         assert count == 1
 
 
@@ -750,10 +775,11 @@ class Outer:
 # TEST SUITE 12: CODE COMPILATION VERIFICATION
 # ============================================================================
 
+
 class TestCodeCompilation:
     """Tests to verify that transformed code compiles correctly."""
-    
-    def test_complex_function_compiles(self):
+
+    def test_complex_function_compiles(self) -> None:
         """Test that complex transformed functions compile."""
         code = """
 def process_data(items, factor):
@@ -769,14 +795,14 @@ def process_data(items, factor):
         tree = transform_code(code, p)
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_class_definition_compiles(self):
+
+    def test_class_definition_compiles(self) -> None:
         """Test that class definitions compile after transformation."""
         code = """
 class DataProcessor:
     def __init__(self, data):
         self.data = data
-    
+
     def process(self, multiplier):
         results = []
         for item in self.data:
@@ -787,8 +813,8 @@ class DataProcessor:
         tree = transform_code(code, p)
         compiled = compile(tree, filename="<test>", mode="exec")
         assert compiled is not None
-    
-    def test_lambda_in_loop_compiles(self):
+
+    def test_lambda_in_loop_compiles(self) -> None:
         """Test that loops with lambdas compile."""
         code = """
 def process():

@@ -1,0 +1,355 @@
+name: Autobot Manager
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  pull_request:
+    types: [opened, closed, synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  project-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply File/Branch Labels
+        if: github.event_name == 'pull_request'
+        uses: actions/labeler@v6
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          sync-labels: false
+
+      - name: Manage Project
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const payload = context.payload;
+            const issueNumber = context.issue.number;
+
+            const MIN_RELEASE_SIZE = 3;
+            const FORCE_RELEASE_TYPES = ['enhancement', 'breaking-change', 'security'];
+            const IGNORE_LABELS = ['documentation', 'chore', 'test', 'ci', 'refactor', 'dependencies', 'build'];
+            const THRESHOLD = 8;
+            const BODY_MULTIPLIER = 0.5;
+
+            const labelDefinitions = {
+              'bug': { color: 'd73a4a', description: "Something isn't working" },
+              'enhancement': { color: 'a2eeef', description: "New feature or request" },
+              'documentation': { color: '0075ca', description: "Improvements or additions to documentation" },
+              'breaking-change': { color: 'b60205', description: "Incompatible API changes" },
+              'ui': { color: 'd4c5f9', description: "Visual or UI/UX improvements" },
+              'performance': { color: '5319e7', description: "Performance improvements" },
+              'security': { color: 'e30c0c', description: "Security fixes and updates" },
+              'refactor': { color: 'f29513', description: "Code change that neither fixes a bug nor adds a feature" },
+              'test': { color: 'cc317c', description: "Adding, missing, or correcting tests" },
+              'ci': { color: '006b75', description: "CI/CD and workflow updates" },
+              'dependencies': { color: '0366d6', description: "Dependency updates" },
+              'database': { color: 'fbca04', description: "Database migrations or schema changes" },
+              'build': { color: '89590b', description: "Build system and tooling updates" },
+              'accessibility': { color: 'c2e0c6', description: "Accessibility (a11y) improvements" },
+              'localization': { color: '91d674', description: "Localization (i18n) and translation" }
+            };
+
+            function calculateLabels(title, branch, body) {
+              const textTitle = `${title} ${branch}`.toLowerCase();
+              const textBody = (body || "").toLowerCase();
+
+              const dictionaries = {
+                'bug': {
+                  high: ['fix', 'hotfix', 'patch', 'crash', 'exception', 'fatal', 'broken', 'regression'],
+                  medium: ['bug', 'issue', 'error', 'fail', 'defect', 'glitch', 'incorrect'],
+                  low: ['unexpected', 'behavior', 'weird', 'problem']
+                },
+                'enhancement': {
+                  high: ['feat', 'feature', 'new', 'add', 'implement', 'introduce', 'improve', 'enhance'],
+                  medium: ['update', 'upgrade', 'better', 'support', 'expose'],
+                  low: ['tweak', 'adjust', 'allow', 'capability']
+                },
+                'ci': {
+                  high: ['autobot', 'workflow', 'pipeline', 'ci/cd', 'github actions', 'circleci', 'jenkins', 'dockerfile', 'k8s', 'kubernetes', '.github'],
+                  medium: ['deploy', 'release', 'action', 'runner', 'label', 'labeling', 'triage'],
+                  low: ['bot', 'script', 'check', 'linter', 'yaml', 'yml', 'cron', 'schedule', 'scoring']
+                },
+                'documentation': {
+                  high: ['docs', 'documentation', 'readme', 'license', 'changelog', 'javadoc', 'jsdoc'],
+                  medium: ['doc', 'wiki', 'guide', 'manual', 'reference', 'typo', 'grammar'],
+                  low: ['comment', 'edit', 'note', 'explanation']
+                },
+                'security': {
+                  high: ['cve', 'vulnerability', 'xss', 'csrf', 'exploit', 'injection', 'hacked'],
+                  medium: ['security', 'secure', 'auth', 'authorize', 'authentication', 'token', 'secret', 'password', 'encrypt'],
+                  low: ['login', 'logout', 'permission', 'role', 'access', 'safe']
+                },
+                'performance': {
+                  high: ['memory leak', 'race condition', 'deadlock', 'bundle size', 'lazy load'],
+                  medium: ['performance', 'perf', 'optimize', 'speed', 'latency', 'throughput', 'benchmark'],
+                  low: ['slow', 'fast', 'lag', 'render', 'heavy']
+                },
+                'database': {
+                  high: ['migration', 'schema', 'sql', 'postgres', 'mongo', 'mysql', 'sqlite'],
+                  medium: ['database', 'db', 'query', 'index', 'model', 'entity', 'join'],
+                  low: ['data', 'record', 'row', 'column', 'seed']
+                },
+                'ui': {
+                  high: ['css', 'scss', 'less', 'sass', 'flexbox', 'grid', 'material-ui', 'bootstrap', 'tailwind'],
+                  medium: ['ui', 'ux', 'style', 'design', 'theme', 'dark mode', 'layout', 'component'],
+                  low: ['color', 'font', 'margin', 'padding', 'width', 'height', 'align', 'view']
+                },
+                'dependencies': {
+                  high: ['renovate', 'dependabot', 'package.json', 'yarn.lock', 'go.mod', 'cargo.toml'],
+                  medium: ['dependency', 'deps', 'npm', 'yarn', 'pip', 'upgrade dep', 'bump'],
+                  low: ['version', 'install', 'package', 'library']
+                },
+                'breaking-change': {
+                  high: ['breaking change', 'breaking', 'major', 'rewrite', 'overhaul', 'migration'],
+                  medium: ['incompatible', 'deprecate', 'deprecated', 'removed', 'drop support'],
+                  low: ['change api', 'api change']
+                },
+                'refactor': {
+                  high: ['refactor', 'rewrite', 'restructure'],
+                  medium: ['clean', 'cleanup', 'simplify', 'format', 'lint', 'prettier', 'eslint'],
+                  low: ['dead code', 'unused', 'rename', 'move', 'extract']
+                },
+                'test': {
+                  high: ['test', 'tests', 'testing', 'spec', 'specs', 'jest', 'mocha', 'cypress'],
+                  medium: ['e2e', 'unit', 'coverage', 'integration', 'assert'],
+                  low: ['mock', 'spy', 'stub', 'snapshot']
+                },
+                'build': {
+                  high: ['webpack', 'vite', 'rollup', 'babel', 'tsc', 'typescript'],
+                  medium: ['build', 'compile', 'compiler', 'config', 'configuration'],
+                  low: ['env', 'environment', 'makefile']
+                },
+                'accessibility': {
+                  high: ['a11y', 'accessibility', 'wcag', 'aria'],
+                  medium: ['screen reader', 'focus', 'tabindex', 'contrast', 'alt text'],
+                  low: ['keyboard', 'navigation']
+                },
+                'localization': {
+                  high: ['i18n', 'l10n', 'intl', 'international'],
+                  medium: ['locale', 'translation', 'translate', 'language'],
+                  low: ['messages', 'strings']
+                }
+              };
+
+              const confidentLabels = [];
+
+              for (const [label, tiers] of Object.entries(dictionaries)) {
+                let score = 0;
+
+                const calculateTierScore = (keywords, points) => {
+                  let tierScore = 0;
+                  const safeKeywords = keywords.map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+                  const regex = new RegExp(`\\b(${safeKeywords.join('|')})\\b`, 'gi');
+
+                  const titleMatches = (textTitle.match(regex) || []).length;
+                  tierScore += titleMatches * points;
+
+                  const bodyMatches = (textBody.match(regex) || []).length;
+                  tierScore += bodyMatches * points * BODY_MULTIPLIER;
+                  return tierScore;
+                };
+
+                score += calculateTierScore(tiers.high, 10);
+                score += calculateTierScore(tiers.medium, 5);
+                score += calculateTierScore(tiers.low, 2);
+
+                if (score >= THRESHOLD) {
+                  confidentLabels.push(label);
+                }
+              }
+
+              return confidentLabels;
+            }
+
+            async function ensureLabelExists(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (e) {
+                if (e.status === 404) {
+                  const def = labelDefinitions[name] || { color: 'ededed', description: '' };
+                  await github.rest.issues.createLabel({
+                    owner, repo, name, color: def.color, description: def.description
+                  });
+                }
+              }
+            }
+
+            async function getOrCreateMilestone() {
+              const milestones = await github.rest.issues.listMilestones({
+                owner, repo, state: 'open', sort: 'due_on', direction: 'asc'
+              });
+
+              if (milestones.data.length > 0) return milestones.data[0];
+
+              let nextVersion = "v0.0.1";
+              try {
+                const releases = await github.rest.repos.listReleases({ owner, repo });
+                const latest = releases.data[0];
+                if (latest) {
+                  const lastTag = latest.tag_name;
+                  const parts = lastTag.replace('v', '').split('.').map(Number);
+                  parts[2] += 1;
+                  nextVersion = `v${parts.join('.')}`;
+                }
+              } catch (e) {}
+
+              const created = await github.rest.issues.createMilestone({
+                owner, repo, title: nextVersion
+              });
+              return created.data;
+            }
+
+            if (['opened', 'synchronize', 'reopened'].includes(payload.action)) {
+
+              const title = payload.pull_request?.title || payload.issue?.title || "";
+              const branch = payload.pull_request?.head?.ref || "";
+              const body = payload.pull_request?.body || payload.issue?.body || "";
+
+              const labelsToAdd = calculateLabels(title, branch, body);
+
+              if (labelsToAdd.length > 0) {
+                for (const label of labelsToAdd) {
+                  await ensureLabelExists(label);
+                }
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: issueNumber, labels: labelsToAdd
+                });
+              }
+
+              const freshIssue = await github.rest.issues.get({
+                owner, repo, issue_number: issueNumber
+              });
+              const currentLabelNames = freshIssue.data.labels.map(l => l.name);
+
+              const shouldSkipMilestone = currentLabelNames.some(l => IGNORE_LABELS.includes(l));
+              const hasNoLabels = currentLabelNames.length === 0;
+
+              if (shouldSkipMilestone || hasNoLabels) {
+                return;
+              }
+
+              const milestone = await getOrCreateMilestone();
+              const currentMilestone = payload.issue?.milestone || payload.pull_request?.milestone;
+
+              if (!currentMilestone) {
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issueNumber, milestone: milestone.number
+                });
+              }
+
+              const items = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo, milestone: milestone.number, state: 'all'
+              });
+
+              const hasFeature = items.some(i => i.labels.some(l => l.name === 'enhancement'));
+              const isBreaking = items.some(i => i.labels.some(l => l.name === 'breaking-change'));
+
+              if (isBreaking && payload.pull_request) {
+                const comments = await github.rest.issues.listComments({
+                  owner, repo, issue_number: issueNumber
+                });
+                const alreadyAlerted = comments.data.some(c => c.body.includes("MAJOR RELEASE ALERT"));
+
+                if (!alreadyAlerted) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: issueNumber,
+                    body: `🚨 **MAJOR RELEASE ALERT** 🚨\n\n@${owner} This PR triggers a Major version bump.`
+                  });
+                }
+              }
+
+              const rawParts = milestone.title.replace('v', '').split('.').map(Number);
+              let [major, minor, patch] = [rawParts[0]||0, rawParts[1]||0, rawParts[2]||0];
+              let newTitle = milestone.title;
+
+              if (isBreaking) {
+                  if (milestone.title.split('.')[0] === `v${major}`) {
+                     major++; minor = 0; patch = 0;
+                     newTitle = `v${major}.${minor}.${patch}`;
+                  }
+              } else if (hasFeature) {
+                  if (patch > 0 || minor === rawParts[1]) {
+                     if (rawParts[2] !== 0) {
+                        minor++; patch = 0;
+                        newTitle = `v${major}.${minor}.${patch}`;
+                     }
+                  }
+              }
+
+              if (newTitle !== milestone.title) {
+                await github.rest.issues.updateMilestone({
+                  owner, repo, milestone_number: milestone.number, title: newTitle
+                });
+              }
+            }
+
+            if (payload.action === 'closed') {
+              const mData = payload.issue?.milestone || payload.pull_request?.milestone;
+
+              if (!mData) return;
+
+              const freshMilestone = await github.rest.issues.getMilestone({
+                owner, repo, milestone_number: mData.number
+              });
+
+              if (freshMilestone.data.open_issues === 0 &&
+                  freshMilestone.data.state === 'open' &&
+                  freshMilestone.data.closed_issues > 0) {
+
+                 const closedItems = await github.paginate(github.rest.issues.listForRepo, {
+                    owner, repo, milestone: freshMilestone.data.number, state: 'closed'
+                 });
+
+                 const hasBreaking = closedItems.some(i => i.labels.some(l => l.name === 'breaking-change'));
+                 const hasForcedType = closedItems.some(i =>
+                    i.labels.some(l => FORCE_RELEASE_TYPES.includes(l.name))
+                 );
+
+                 if (freshMilestone.data.closed_issues < MIN_RELEASE_SIZE && !hasForcedType && !hasBreaking) {
+                    return;
+                 }
+
+                 let targetVersion = freshMilestone.data.title;
+                 const releases = await github.rest.repos.listReleases({ owner, repo });
+                 const latestRelease = releases.data[0];
+
+                 if (latestRelease && latestRelease.draft) {
+                    const v1 = targetVersion.replace('v', '').split('.').map(Number);
+                    const v2 = latestRelease.tag_name.replace('v', '').split('.').map(Number);
+
+                    const isV2Larger = v2[0] > v1[0] ||
+                                      (v2[0] === v1[0] && v2[1] > v1[1]) ||
+                                      (v2[0] === v1[0] && v2[1] === v1[1] && v2[2] > v1[2]);
+
+                    if (isV2Larger) targetVersion = latestRelease.tag_name;
+
+                    await github.rest.repos.deleteRelease({ owner, repo, release_id: latestRelease.id });
+                    try {
+                      await github.rest.git.deleteRef({ owner, repo, ref: `tags/${latestRelease.tag_name}` });
+                    } catch (e) {}
+                 }
+
+                 await github.rest.issues.updateMilestone({
+                   owner, repo, milestone_number: freshMilestone.data.number, state: 'closed'
+                 });
+
+                 await github.rest.repos.createRelease({
+                   owner, repo, tag_name: targetVersion, name: targetVersion,
+                   generate_release_notes: true,
+                   draft: true
+                 });
+
+                 const parts = targetVersion.replace('v', '').split('.').map(Number);
+                 parts[2] += 1;
+                 const nextVersion = `v${parts.join('.')}`;
+                 await github.rest.issues.createMilestone({ owner, repo, title: nextVersion });
+              }
+            }

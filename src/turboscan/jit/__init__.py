@@ -1,1 +1,3 @@
-from turboscan.jit.injector import JITInjector, JIT_INJECTOR
+from turboscan.jit.injector import JIT_INJECTOR, JITInjector
+
+__all__ = ["JIT_INJECTOR", "JITInjector"]

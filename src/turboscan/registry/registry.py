@@ -1,13 +1,15 @@
 import ast
 from pathlib import Path
 from typing import Dict, Optional, Set
-from turboscan.indexing.types import ModuleInfo
-from turboscan.indexing.indexer import HyperIndexer
-from turboscan.io.file_reader import FAST_READER
+
 from turboscan.execution.hyper_boost import HyperBoost
+from turboscan.indexing.indexer import HyperIndexer
+from turboscan.indexing.types import ModuleInfo
+from turboscan.io.file_reader import FAST_READER
+
 
 class HyperRegistry:
-    def __init__(self, root: Path, excludes: Set[str]):
+    def __init__(self, root: Path, excludes: Set[str]) -> None:
         self.root = root
         self.excludes = excludes
         self.modules: Dict[str, ModuleInfo] = {}
@@ -15,14 +17,15 @@ class HyperRegistry:
         self.package_dirs: Set[Path] = set()
         self.src_prefix: Optional[str] = None
         self._file_contents: Dict[Path, str] = {}
-    def scan(self):
-        for candidate in ['src', 'lib', 'app']:
+
+    def scan(self) -> None:
+        for candidate in ["src", "lib", "app"]:
             if (self.root / candidate).is_dir():
                 self.src_prefix = candidate
                 break
         all_files = []
-        for path in self.root.rglob('*.py'):
-            if any((excl in path.parts for excl in self.excludes)):
+        for path in self.root.rglob("*.py"):
+            if any(excl in path.parts for excl in self.excludes):
                 continue
             try:
                 path.relative_to(self.root)
@@ -35,18 +38,18 @@ class HyperRegistry:
                 rel_path = path.relative_to(self.root)
             except ValueError:
                 continue
-            parts = list(rel_path.with_suffix('').parts)
+            parts = list(rel_path.with_suffix("").parts)
             if parts and self.src_prefix and (parts[0] == self.src_prefix):
                 parts = parts[1:]
             if not parts:
                 continue
-            is_init = parts[-1] == '__init__'
+            is_init = parts[-1] == "__init__"
             if is_init:
                 parts = parts[:-1]
                 is_package = True
             else:
                 is_package = False
-            fqn = '.'.join(parts) if parts else ''
+            fqn = ".".join(parts) if parts else ""
             if fqn in self.modules:
                 existing = self.modules[fqn]
                 if is_package and (not existing.is_package):
@@ -60,22 +63,25 @@ class HyperRegistry:
         for fqn, info in self.modules.items():
             if info.is_package:
                 self.package_dirs.add(info.file_path.parent)
-            if '.' in fqn:
-                parent = fqn.rsplit('.', 1)[0]
-                child_name = fqn.rsplit('.', 1)[1]
+            if "." in fqn:
+                parent = fqn.rsplit(".", 1)[0]
+                child_name = fqn.rsplit(".", 1)[1]
                 if parent in self.modules:
                     self.modules[parent].submodules.add(child_name)
-        for path in self.root.rglob('*'):
+        for path in self.root.rglob("*"):
             if not path.is_dir():
                 continue
-            if any((excl in path.parts for excl in self.excludes)):
+            if any(excl in path.parts for excl in self.excludes):
                 continue
-            has_py = any((f.suffix == '.py' for f in path.iterdir() if f.is_file()))
+            has_py = any(
+                f.suffix == ".py" for f in path.iterdir() if f.is_file()
+            )
             if has_py:
                 self.package_dirs.add(path)
+
     def _index_one(self, info: ModuleInfo) -> bool:
         try:
-            content = self._file_contents.get(info.file_path, '')
+            content = self._file_contents.get(info.file_path, "")
             if not content:
                 content = FAST_READER.read_file(info.file_path)
             tree = ast.parse(content)
@@ -84,9 +90,16 @@ class HyperRegistry:
             return True
         except Exception:
             return False
-    def first_pass_indexing(self):
-        HyperBoost.run(self._index_one, list(self.modules.values()), quiet=True, backend='threads')
-    def second_pass_star_imports(self):
+
+    def first_pass_indexing(self) -> None:
+        HyperBoost.run(
+            self._index_one,
+            list(self.modules.values()),
+            quiet=True,
+            backend="threads",
+        )
+
+    def second_pass_star_imports(self) -> None:
         changed = True
         max_iterations = 10
         iteration = 0
@@ -101,25 +114,31 @@ class HyperRegistry:
                         if source_mod.has_all:
                             symbols_to_add = source_mod.exports
                         else:
-                            symbols_to_add = {name for name, sym in source_mod.symbols.items() if not name.startswith('_')}
-                        symbols_to_add = symbols_to_add | source_mod.star_imported_symbols
+                            symbols_to_add = {
+                                name
+                                for name, sym in source_mod.symbols.items()
+                                if not name.startswith("_")
+                            }
+                        symbols_to_add = (
+                            symbols_to_add | source_mod.star_imported_symbols
+                        )
                         before = len(info.star_imported_symbols)
                         info.star_imported_symbols.update(symbols_to_add)
                         if len(info.star_imported_symbols) > before:
                             changed = True
-    def _resolve_abs_for_info(self, info: ModuleInfo, name: Optional[str], level: int) -> Optional[str]:
+
+    def _resolve_abs_for_info(
+        self, info: ModuleInfo, name: Optional[str], level: int
+    ) -> Optional[str]:
         if level == 0:
             return name
-        parts = info.fqn.split('.') if info.fqn else []
-        if info.is_package:
-            base_parts = parts
-        else:
-            base_parts = parts[:-1] if parts else []
+        parts = info.fqn.split(".") if info.fqn else []
+        base_parts = parts if info.is_package else parts[:-1] if parts else []
         up = level - 1
         if up > len(base_parts):
             return None
-        base_parts = base_parts[:len(base_parts) - up]
-        base = '.'.join(base_parts)
+        base_parts = base_parts[: len(base_parts) - up]
+        base = ".".join(base_parts)
         if name:
-            return f'{base}.{name}' if base else name
+            return f"{base}.{name}" if base else name
         return base

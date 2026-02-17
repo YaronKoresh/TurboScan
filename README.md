@@ -1,9 +1,10 @@
-TurboScan - Maximum Performance Python Execution Engine
-=====================================================================
+# TurboScan - Maximum Performance Python Execution Engine
 A massively parallelized, GPU-accelerated, JIT-optimized execution framework
 that uses ALL available system resources for lightning-fast Python execution.
 
-Features:
+---
+
+**Features:**
 - Multi-GPU acceleration with intelligent load balancing
 - Numba JIT injection for hot paths
 - Memory-mapped file I/O
@@ -16,7 +17,9 @@ Features:
 - SIMD-style operations where possible
 - Transparent handling of custom classes and dataclasses
 
-SMART MULTIPROCESSING:
+---
+
+**SMART MULTIPROCESSING:**
 - Intelligently detects when functions use threads internally
 - Functions using ThreadPoolExecutor, threading.Thread, etc. are
   PRIORITIZED for multiprocessing (each process gets its own GIL)

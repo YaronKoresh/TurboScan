@@ -27,8 +27,6 @@ repos:
         files: "\\.gitignore$"
       - id: fix-byte-order-marker
       - id: forbid-submodules
-      - id: mixed-line-ending
-        args: [ --fix=lf ]
       - id: no-commit-to-branch
         stages: [ pre-commit ]
       - id: pretty-format-json

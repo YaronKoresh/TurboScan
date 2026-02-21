@@ -11,14 +11,14 @@ class TestHyperResolver:
     @pytest.fixture
     def mock_registry(self):
         reg = MagicMock(spec=HyperRegistry)
-        reg.modules = {"my_project.utils": True}  # Simulate an internal module
+        reg.modules = {"my_project.utils": True}
         reg.root = Path("/fake/root")
         reg.src_prefix = "src"
         return reg
 
     @pytest.fixture
     def resolver(self, mock_registry):
-        # Patch site-packages discovery to avoid scanning real disk
+
         with patch.object(
             HyperResolver, "_discover_site_packages", return_value=[]
         ), patch.object(HyperResolver, "_scan_external_toplevel"):
@@ -26,24 +26,23 @@ class TestHyperResolver:
 
     def test_stdlib_resolution(self, resolver) -> None:
         """Should correctly identify standard library modules."""
-        # 'os' and 'sys' are definitely stdlib
+
         assert resolver._stdlib_exists("os") is True
         assert resolver._stdlib_exists("sys") is True
         assert resolver.resolvable("os.path") is True
 
     def test_internal_resolution_via_registry(self, resolver) -> None:
         """Should resolve modules present in the registry."""
-        # We mocked 'my_project.utils' in the registry
+
         assert resolver._internal_exists("my_project.utils") is True
         assert resolver.resolvable("my_project.utils") is True
 
-        # Verify root detection
         assert resolver.is_internal_root("my_project.utils") is True
         assert resolver.is_internal_root("external_lib") is False
 
     def test_external_resolution(self, resolver) -> None:
         """Should identify known external packages."""
-        # Manually add to the set since we mocked the scanner
+
         resolver._known_external_toplevel.add("requests")
 
         assert resolver._external_exists("requests") is True
@@ -52,19 +51,14 @@ class TestHyperResolver:
 
     def test_caching_memoization(self, resolver) -> None:
         """Should cache results to avoid repetitive checks."""
-        # Force a result into memo
+
         resolver.memo["cached_mod"] = True
 
-        # Should return True immediately without checking internal/external/stdlib
         assert resolver.resolvable("cached_mod") is True
 
     def test_missing_module(self, resolver) -> None:
         """Should return False for non-existent modules."""
         assert resolver.resolvable("completely_fake_module_123") is False
-
-    # =========================================================================
-    # ADDITIONAL TESTS FOR HIGHER COVERAGE
-    # =========================================================================
 
     def test_stdlib_submodule(self, resolver) -> None:
         """Should resolve stdlib submodules."""
@@ -78,17 +72,14 @@ class TestHyperResolver:
 
     def test_internal_nested_module(self, resolver) -> None:
         """Should resolve nested internal modules."""
-        # Add a nested module
+
         resolver.registry.modules["my_project.sub.module"] = True
         assert resolver._internal_exists("my_project.sub.module") is True
 
     def test_internal_partial_path(self, resolver) -> None:
         """Should check internal existence for partial paths."""
-        # The implementation checks if the module name starts with any known internal module
-        # my_project.utils is internal, so my_project might not be directly resolvable
-        # This tests what the implementation actually does
+
         resolver._internal_exists("my_project")
-        # Result depends on implementation
 
     def test_external_nested_module(self, resolver) -> None:
         """Should resolve nested external modules."""
@@ -108,7 +99,7 @@ class TestHyperResolver:
 
     def test_resolvable_builtin(self, resolver) -> None:
         """Should resolve Python builtins."""
-        # Builtins like 'builtins' module
+
         assert resolver.resolvable("builtins") is True
 
     def test_resolvable_typing(self, resolver) -> None:
@@ -123,34 +114,32 @@ class TestHyperResolver:
 
     def test_memo_caching(self, resolver) -> None:
         """Test that memoization works correctly."""
-        # First call - not in memo
+
         result1 = resolver.resolvable("os")
-        # Should be cached now
+
         assert "os" in resolver.memo
-        # Second call should use cache
+
         result2 = resolver.resolvable("os")
         assert result1 == result2
 
     def test_empty_module_name(self, resolver) -> None:
         """Should handle empty module names gracefully."""
-        # The implementation may return True or False for empty string
-        # depending on how it handles edge cases
+
         result = resolver.resolvable("")
-        # Just verify it doesn't crash
+
         assert isinstance(result, bool)
 
     def test_discover_site_packages(self, mock_registry) -> None:
         """Test _discover_site_packages method."""
-        # Create resolver without mocking
+
         resolver = HyperResolver(mock_registry)
-        # Should have discovered some site packages
-        # (or empty list if none exist)
+
         assert isinstance(resolver.site_packages, list)
 
     def test_scan_external_toplevel(self, mock_registry) -> None:
         """Test _scan_external_toplevel method."""
         resolver = HyperResolver(mock_registry)
-        # Should have a set of known external packages
+
         assert isinstance(resolver._known_external_toplevel, set)
 
     def test_multiple_stdlib_checks(self, resolver) -> None:
@@ -174,17 +163,15 @@ class TestHyperResolver:
     def test_parent_package_resolution(self, resolver) -> None:
         """Test that parent packages are resolved for nested modules."""
         resolver.registry.modules["pkg.sub.module"] = True
-        # Should resolve the full path
+
         assert resolver.resolvable("pkg.sub.module") is True
 
     def test_case_sensitivity(self, resolver) -> None:
         """Module names handling - depends on implementation."""
         resolver._known_external_toplevel.add("numpy")
         assert resolver._external_exists("numpy") is True
-        # Case handling depends on implementation
-        # The implementation checks if any toplevel starts with the name
+
         resolver._external_exists("NumPy")
-        # Just document the behavior, don't assert specific case handling
 
     def test_clear_cache(self, resolver) -> None:
         """Test clearing the memo cache."""

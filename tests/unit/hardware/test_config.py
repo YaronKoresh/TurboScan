@@ -7,7 +7,7 @@ from turboscan.hardware.config import HardwareConfig, detect_hardware
 class TestHardwareConfig:
     def test_detect_hardware_full_capabilities(self) -> None:
         """Test hardware detection on a high-end machine (GPU + psutil)."""
-        # Create mocks
+
         mock_torch = MagicMock()
         mock_torch.cuda.is_available.return_value = True
         mock_torch.cuda.device_count.return_value = 2
@@ -21,7 +21,6 @@ class TestHardwareConfig:
         mock_psutil.virtual_memory.return_value.total = 32 * 1024**3
         mock_psutil.virtual_memory.return_value.available = 16 * 1024**3
 
-        # Patch sys.modules to handle local imports
         with patch.dict(
             sys.modules, {"torch": mock_torch, "psutil": mock_psutil}
         ):
@@ -34,19 +33,16 @@ class TestHardwareConfig:
 
     def test_detect_hardware_minimal(self) -> None:
         """Test fallback logic when dependencies are missing."""
-        # Mock modules raising ImportError
+
         MagicMock(side_effect=ImportError("Not found"))
 
-        # We also need to patch os.cpu_count if psutil fails
         with patch("os.cpu_count", return_value=4):
-            # Patch imports to fail
             with patch.dict(sys.modules, {"torch": None, "psutil": None}):
-                # NOTE: Setting to None in sys.modules triggers ImportError
                 config = detect_hardware()
 
                 assert config.gpu_count == 0
                 assert config.gpu_names == []
-                # Fallback check
+
                 assert config.memory_total == 8 * 1024**3
 
     def test_hardware_config_defaults(self) -> None:

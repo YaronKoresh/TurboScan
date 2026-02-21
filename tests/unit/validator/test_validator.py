@@ -12,13 +12,13 @@ from turboscan.validator.validator import HyperValidator
 class TestHyperValidator:
     @pytest.fixture
     def validator(self):
-        # Mock dependencies
+
         mock_registry = MagicMock(spec=HyperRegistry)
         mock_registry.files_map = {}
         mock_registry.modules = {}
 
         mock_resolver = MagicMock(spec=HyperResolver)
-        # Default behavior: everything resolves successfully
+
         mock_resolver.resolvable.return_value = True
         mock_resolver.is_internal_root.return_value = False
         mock_resolver.is_external_or_stdlib.return_value = False
@@ -121,16 +121,9 @@ from math import *
         """
         errors, _warnings = self.validate_code(validator, code)
 
-        # 1. Ensure it didn't crash or flag 'math' as missing
         assert len(errors) == 0
 
-        # 2. Verify it is NOT in the imports_map (correct behavior)
-        # The validator explicitly 'continues' on '*', so the map should be empty
         assert not validator.imports_map
-
-    # =========================================================================
-    # ADDITIONAL TESTS FOR HIGHER COVERAGE
-    # =========================================================================
 
     def test_mutable_default_dict(self, validator) -> None:
         """Should detect dict as mutable default argument."""
@@ -149,9 +142,6 @@ def bad_func(items=set()):
     items.add(1)
         """
         _errors, _ = self.validate_code(validator, code)
-        # Note: The implementation may only check for [] and {} literals
-        # set() is a call, so may not be detected
-        # Document actual behavior rather than assert
 
     def test_safe_default_none(self, validator) -> None:
         """None as default should be safe."""
@@ -192,8 +182,6 @@ class MyClass:
         return self.value
         """
         _errors, _ = self.validate_code(validator, code)
-        # self.value access might trigger an error depending on implementation
-        # but self should be defined
 
     def test_class_attribute(self, validator) -> None:
         """Class attributes should be handled."""
@@ -369,12 +357,10 @@ x += 5
 x += 5  # x not defined
         """
         _errors, _ = self.validate_code(validator, code)
-        # The validator may or may not catch this depending on how it tracks reads vs writes
-        # Document actual behavior
 
     def test_match_statement(self, validator) -> None:
         """Match statement (Python 3.10+) should handle patterns."""
-        # Skip if Python < 3.10
+
         import sys
 
         if sys.version_info < (3, 10):
@@ -408,7 +394,6 @@ async def async_func():
         print(item)
         """
         _errors, _ = self.validate_code(validator, code)
-        # async_generator is not defined, but we're testing item is defined
 
     def test_async_with(self, validator) -> None:
         """Async with should define context variable."""
@@ -477,7 +462,7 @@ import sys
         tree = ast.parse(code)
         v.visit(tree)
         unused = v.get_unused_imports()
-        # With check_unused=False, should still track but not report
+
         assert unused is not None
 
     def test_builtin_names(self, validator) -> None:
@@ -498,7 +483,6 @@ def func():
     pass
         """
         _errors, _ = self.validate_code(validator, code)
-        # staticmethod is a builtin, should be fine
 
     def test_multiple_targets(self, validator) -> None:
         """Multiple assignment targets."""

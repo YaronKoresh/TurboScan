@@ -48,7 +48,7 @@ class JITInjector:
         ast.Gt,
         ast.GtE,
     }
-    # NumPy functions that don't support scalar inputs in Numba and may cause TypingError
+
     NUMBA_SCALAR_INCOMPATIBLE_FUNCS = {
         "clip",
         "reshape",
@@ -121,7 +121,7 @@ class JITInjector:
                 return False
             if isinstance(child, (ast.JoinedStr, ast.FormattedValue)):
                 return False
-            # Check for NumPy functions that don't support scalar inputs in Numba
+
             if (
                 isinstance(child, ast.Call)
                 and isinstance(child.func, ast.Attribute)

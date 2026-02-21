@@ -17,17 +17,13 @@ class TestHyperAuditor:
         ) as val, patch("turboscan.auditor.auditor.HyperBoost") as boost, patch(
             "turboscan.auditor.auditor.FAST_READER"
         ) as reader:
-            # Setup Registry Mock
             reg_instance = reg.return_value
             reg_instance.modules = {}
             reg_instance.files_map = {Path("test.py"): "test"}
             reg_instance._file_contents = {}
 
-            # Setup Reader Mock to return valid code string
-            # This fixes the "compile() arg 1 must be a string" error
             reader.read_file.return_value = "x = 1"
 
-            # Setup Boost to run synchronously for tests
             def fake_run(func, items, **kwargs):
                 return [func(i) for i in items]
 
@@ -71,7 +67,6 @@ class TestHyperAuditor:
         auditor = HyperAuditor(Path("."), set(), check_unused=True)
         issues = auditor._validate_file(Path("dirty.py"))
 
-        # Check formatting
         assert any("[ERROR]" in i and "Syntax error" in i for i in issues)
         assert any("[WARN]" in i and "Deprecation warning" in i for i in issues)
         assert any("[UNUSED]" in i and "unused_sys" in i for i in issues)

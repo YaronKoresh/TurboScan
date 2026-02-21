@@ -17,16 +17,16 @@ class FastFileReader:
     def read_file(self, path: Path) -> str:
         try:
             size = path.stat().st_size
-            # For very small files, use direct read with optimized buffer
+
             if size < 4096:
                 return path.read_text(encoding="utf-8", errors="ignore")
-            # For small to medium files, use buffered read
+
             elif size < 64 * 1024:
                 with open(
                     path, encoding="utf-8", errors="ignore", buffering=8192
                 ) as f:
                     return f.read()
-            # For large files, use memory mapping
+
             else:
                 with open(path, "rb") as f, mmap.mmap(
                     f.fileno(), 0, access=mmap.ACCESS_READ

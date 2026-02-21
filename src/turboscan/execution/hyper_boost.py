@@ -89,7 +89,6 @@ from turboscan.execution.utils import (
 from turboscan.gpu.accelerator import GPU_ACCELERATOR
 from turboscan.hardware.config import HARDWARE
 
-# Mark this as the main TurboScan process to prevent auto-patching in main process
 _TURBOSCAN_MAIN_PROCESS = True
 
 
@@ -101,7 +100,6 @@ def _safe_make_cache_key(func_name: str, item: Any) -> Optional[str]:
     try:
         return HYPER_CACHE._make_key(func_name, item)
     except (ValueError, TypeError, RecursionError):
-        # Common errors: "cannot compute fingerprint of empty list"
         return None
     except Exception:
         return None
@@ -113,7 +111,7 @@ class HyperBoost:
     _thread_pool: Optional[ThreadPoolExecutor] = None
     _gpu_queue: Optional[queue.Queue] = None
     _main_module_patched: bool = False
-    _patched_classes: Set[type] = set()  # Track patched classes
+    _patched_classes: Set[type] = set()
 
     BATCH_SIZE = 128
     MIN_PARALLEL_ITEMS = 2
@@ -128,11 +126,7 @@ class HyperBoost:
     FATAL_PICKLE_ERRORS = (pickle.PicklingError, TypeError, AttributeError)
     DEBUG = False
 
-    # Auto-scaling: minimum chunks to maximize resource utilization
-    # When work items < available workers, automatically create more chunks
-    AUTO_SCALE_MIN_CHUNKS = (
-        "auto"  # 'auto' = use cpu_count, or set to specific int
-    )
+    AUTO_SCALE_MIN_CHUNKS = "auto"
 
     @classmethod
     def set_debug(cls, enabled: bool = True) -> None:
@@ -185,13 +179,10 @@ class HyperBoost:
             Effective minimum number of chunks
         """
         if min_chunks is None:
-            # Default: no subdivision, use one chunk per item
             return num_items
         elif min_chunks == "auto":
-            # Auto: scale to use all CPUs, at least 2x for better distribution
             return max(HARDWARE.cpu_count * 2, num_items)
         elif isinstance(min_chunks, int) and min_chunks > 0:
-            # Use the larger of min_chunks or num_items to ensure we have enough chunks
             return max(min_chunks, num_items)
         else:
             return num_items
@@ -202,9 +193,7 @@ class HyperBoost:
             import numpy as np
 
             if isinstance(item, np.ndarray):
-                return (
-                    item.ndim >= 3
-                )  # Only auto-chunk 3D+ (e.g., [Batch, Height, Width])
+                return item.ndim >= 3
         except ImportError:
             np = None
 
@@ -212,7 +201,7 @@ class HyperBoost:
             first = item[0]
             if isinstance(first, (int, float, complex)):
                 return False
-            # Check for numpy scalar types if numpy is available
+
             if np is not None and isinstance(first, np.number):
                 return False
 
@@ -280,7 +269,7 @@ class HyperBoost:
                             if item.ndim == 2:
                                 chunk_arrays = np.array_split(
                                     item, actual_chunks, axis=1
-                                )  # Split Time, keep Freq
+                                )
                             else:
                                 chunk_arrays = np.array_split(
                                     item, actual_chunks
@@ -307,7 +296,7 @@ class HyperBoost:
                                 if chunk_idx < actual_chunks - 1
                                 else len(item)
                             )
-                            # Preserve original type
+
                             chunk = (
                                 item[start:end]
                                 if isinstance(item, list)
@@ -323,7 +312,6 @@ class HyperBoost:
                             )
                         continue
 
-            # Item not chunkable or chunking not beneficial
             subdivided.append(item)
             chunk_map.append((orig_idx, 0, 1))
 
@@ -355,10 +343,8 @@ class HyperBoost:
             List of results matching original item order
         """
         if len(results) == original_count:
-            # No subdivision was done
             return results
 
-        # Group results by original index
         grouped = {}
         for result, (orig_idx, chunk_idx, total_chunks) in zip(
             results, chunk_map
@@ -367,7 +353,6 @@ class HyperBoost:
                 grouped[orig_idx] = [None] * total_chunks
             grouped[orig_idx][chunk_idx] = result
 
-        # Reassemble each original item's results
         reassembled = []
         for orig_idx in range(original_count):
             if orig_idx in grouped:
@@ -375,12 +360,10 @@ class HyperBoost:
                 if len(chunks) == 1:
                     reassembled.append(chunks[0])
                 else:
-                    # Try to concatenate results
                     try:
                         import numpy as np
 
                         if all(isinstance(c, np.ndarray) for c in chunks):
-                            # For 2D arrays, split was done along axis=1, so concatenate along axis=1
                             if chunks[0].ndim == 2:
                                 reassembled.append(
                                     np.concatenate(chunks, axis=1)
@@ -391,7 +374,6 @@ class HyperBoost:
                     except ImportError:
                         pass
 
-                    # For lists
                     if all(isinstance(c, list) for c in chunks):
                         combined = []
                         for c in chunks:
@@ -399,7 +381,6 @@ class HyperBoost:
                         reassembled.append(combined)
                         continue
 
-                    # For other types, return as list of chunk results
                     reassembled.append(chunks)
             else:
                 reassembled.append(None)
@@ -461,7 +442,6 @@ class HyperBoost:
                     except Exception:
                         pass
 
-            # Check nested objects
             if hasattr(obj, "__dict__"):
                 for attr_name, attr_val in obj.__dict__.items():
                     if not attr_name.startswith("_"):
@@ -490,19 +470,16 @@ class HyperBoost:
         seen.add(obj_id)
 
         try:
-            # If this object is from __main__, patch its class
             if hasattr(obj, "__class__"):
                 cls_type = type(obj)
                 if (
                     cls_type.__module__ == "__main__"
                     and cls_type not in cls._patched_classes
                 ):
-                    # Check if class has lru_cache methods
                     for name in dir(cls_type):
                         try:
                             attr = getattr(cls_type, name, None)
                             if attr is not None and _is_lru_cache_method(attr):
-                                # Patch the entire class
                                 patch_class_for_multiprocessing(
                                     cls_type, use_instance_cache=False
                                 )
@@ -515,17 +492,14 @@ class HyperBoost:
                         except Exception:
                             pass
 
-            # Recursively check nested objects
             if hasattr(obj, "__dict__"):
                 for attr_val in obj.__dict__.values():
                     cls._deep_patch_for_serialization(attr_val, seen)
 
-            # Check tuple/list elements
             if isinstance(obj, (list, tuple)):
                 for item in obj:
                     cls._deep_patch_for_serialization(item, seen)
 
-            # Check dict values
             if isinstance(obj, dict):
                 for val in obj.values():
                     cls._deep_patch_for_serialization(val, seen)
@@ -552,18 +526,14 @@ class HyperBoost:
         if not todos:
             return (True, None)
 
-        # Ensure __main__ is patched FIRST
         cls._ensure_main_module_patched()
 
-        # Determine serializer
         use_cloudpickle_worker = CLOUDPICKLE_AVAIL and (
             analysis.is_picklable is None or analysis.is_picklable
         )
         serializer = cloudpickle if use_cloudpickle_worker else pickle
 
-        # Test serialization with samples
         if use_cloudpickle_worker:
-            # Test function serialization
             try:
                 func_bytes = serializer.dumps(func)
                 if cls.DEBUG:
@@ -576,7 +546,6 @@ class HyperBoost:
                     print(f"  [DEBUG] Function serialization failed: {e}")
                 return (False, reason)
 
-            # Test work item serialization with aggressive patching
             sample_indices = [0]
             if len(todos) > 1:
                 sample_indices.append(len(todos) - 1)
@@ -588,10 +557,8 @@ class HyperBoost:
             for sample_idx in sample_indices:
                 test_item = todos[sample_idx][1]
 
-                # Aggressively patch any __main__ classes in the item
                 cls._deep_patch_for_serialization(test_item)
 
-                # Find and report any remaining problematic classes
                 if cls.DEBUG and sample_idx == 0:
                     problems = cls._find_problematic_classes(test_item)
                     if problems:
@@ -603,7 +570,6 @@ class HyperBoost:
                         if len(problems) > 5:
                             print(f"    ... and {len(problems) - 5} more")
 
-                # Try serialization
                 test_work = (func, test_item, None, {})
                 try:
                     work_bytes = serializer.dumps(test_work)
@@ -618,7 +584,6 @@ class HyperBoost:
                             f"  [DEBUG] Serialization failed: {type(e).__name__}: {error_str}"
                         )
 
-                    # Try cleaning the item
                     try:
                         cleaned_item = _clean_for_pickle(
                             prepare_for_serialization(test_item)
@@ -651,7 +616,6 @@ class HyperBoost:
         else:
             need_cleaning = False
 
-        # Windows + cloudpickle without loky check
         if (
             platform.system() == "Windows"
             and use_cloudpickle_worker
@@ -670,7 +634,6 @@ class HyperBoost:
         last_error = None
         use_loky_native = LOKY_AVAIL and use_cloudpickle_worker
 
-        # Prepare all work items with patching
         def prepare_item(item):
             cls._deep_patch_for_serialization(item)
             if need_cleaning:
@@ -679,7 +642,6 @@ class HyperBoost:
 
         prepared_todos = [(idx, prepare_item(item)) for idx, item in todos]
 
-        # Pre-serialize work items
         if use_loky_native or use_cloudpickle_worker:
             try:
                 work_items = [
@@ -703,7 +665,6 @@ class HyperBoost:
             backend_name = "loky" if use_loky_native else "ProcessPoolExecutor"
             print(f"  [DEBUG] Using {backend_name} with {max_workers} workers")
 
-        # Execute with retries
         for attempt in range(cls.PROCESS_MAX_RETRIES):
             try:
                 if use_loky_native:
@@ -724,14 +685,13 @@ class HyperBoost:
                     completed = [None] * len(work_items)
 
                     for future in as_completed(future_to_idx):
-                        fut_idx = future_to_idx[future]  # Instant O(1) lookup
+                        fut_idx = future_to_idx[future]
                         completed[fut_idx] = future.result()
 
                     futures = completed
                     if cls.DEBUG:
                         print(f"  [DEBUG] Got {len(futures)} results")
 
-                    # Process results
                     for i, raw_result in enumerate(futures):
                         idx = todos[i][0]
                         result = serializer.loads(raw_result)
@@ -740,21 +700,16 @@ class HyperBoost:
                             status, data = result
 
                             if status == "offloaded":
-                                # 'data' is the file path
                                 try:
-                                    # Load data from disk
                                     with open(data, "rb") as f:
                                         if use_cloudpickle_worker:
                                             actual_result = serializer.load(f)
                                         else:
-                                            # Standard worker uses standard pickle
                                             actual_result = pickle.load(f)
 
-                                    # Clean up temp file
                                     with contextlib.suppress(OSError):
                                         os.remove(data)
 
-                                    # Proceed as success
                                     results[idx] = actual_result
 
                                     if use_cache:
@@ -772,7 +727,6 @@ class HyperBoost:
                             elif status == "success":
                                 results[idx] = data
                                 if use_cache:
-                                    # SAFE cache key creation
                                     key = _safe_make_cache_key(
                                         func_name, items[idx]
                                     )
@@ -799,7 +753,6 @@ class HyperBoost:
                     return (True, None)
 
                 else:
-                    # Standard ProcessPoolExecutor path
                     if platform.system() == "Windows":
                         ctx = mp.get_context("spawn")
                     else:
@@ -823,9 +776,7 @@ class HyperBoost:
                         completed = [None] * len(work_items)
 
                         for future in as_completed(future_to_idx):
-                            fut_idx = future_to_idx[
-                                future
-                            ]  # Instant O(1) lookup
+                            fut_idx = future_to_idx[future]
                             try:
                                 completed[fut_idx] = future.result()
                             except Exception as e:
@@ -833,7 +784,6 @@ class HyperBoost:
                                 traceback.format_exc()
                                 raise
 
-                        # Process results
                         for i, raw_result in enumerate(completed):
                             idx = todos[i][0]
                             result = (
@@ -845,23 +795,18 @@ class HyperBoost:
                             if isinstance(result, tuple) and len(result) == 2:
                                 status, data = result
                                 if status == "offloaded":
-                                    # 'data' is the file path
                                     try:
-                                        # Load data from disk
                                         with open(data, "rb") as f:
                                             if use_cloudpickle_worker:
                                                 actual_result = serializer.load(
                                                     f
                                                 )
                                             else:
-                                                # Standard worker uses standard pickle
                                                 actual_result = pickle.load(f)
 
-                                        # Clean up temp file
                                         with contextlib.suppress(OSError):
                                             os.remove(data)
 
-                                        # Proceed as success
                                         results[idx] = actual_result
 
                                         if use_cache:
@@ -961,11 +906,9 @@ class HyperBoost:
         """
         items = list(data)
 
-        # Handle empty input
         if not items:
             return []
 
-        # Prevent recursive parallelization
         thread_id = threading.get_ident()
         if thread_id in cls._active_threads:
             if isinstance(task, list):
@@ -979,7 +922,6 @@ class HyperBoost:
             cls._active_threads.add(thread_id)
 
         try:
-            # Handle task chaining
             if isinstance(task, list):
                 current_data = items
                 for func in task:
@@ -1000,7 +942,7 @@ class HyperBoost:
             func_name = getattr(func, "__name__", "task")
             HARDWARE.cpu_count * 4
             batch_size = cls.BATCH_SIZE
-            # Analyze function
+
             analysis = FunctionAnalyzer.analyze(func)
             if cls.DEBUG:
                 print(f"\n[DEBUG] Function analysis for '{func_name}':")
@@ -1020,7 +962,6 @@ class HyperBoost:
                     f"\n🧵 Detected internal threading in '{func_name}' - multiprocessing will give each call its own GIL!"
                 )
 
-            # Auto-scaling: subdivide items if min_chunks is specified and we have fewer items than desired
             original_items = items
             chunk_map = None
             effective_min_chunks = cls._get_effective_min_chunks(
@@ -1028,7 +969,6 @@ class HyperBoost:
             )
 
             if min_chunks is not None and len(items) < effective_min_chunks:
-                # Check if items can be subdivided
                 can_subdivide = any(
                     cls._is_chunkable_item(item) for item in items
                 )
@@ -1051,11 +991,9 @@ class HyperBoost:
                             f"🚀 Auto-scaled: {len(original_items)} items → {len(items)} chunks (using {min(len(items), HARDWARE.cpu_count)} CPUs)"
                         )
 
-            # Prepare results array
             results = [None] * len(items)
             todos = []
 
-            # Check cache - with SAFE key creation
             if use_cache:
                 for i, item in enumerate(items):
                     try:
@@ -1067,7 +1005,6 @@ class HyperBoost:
                             else:
                                 todos.append((i, item))
                         else:
-                            # Can't create cache key, skip caching for this item
                             todos.append((i, item))
                     except Exception:
                         todos.append((i, item))
@@ -1077,7 +1014,6 @@ class HyperBoost:
             if not todos:
                 return results
 
-            # Setup progress display
             progress = None
             task_id = None
             show_progress = RICH_AVAIL and not quiet and len(todos) > 5
@@ -1097,7 +1033,6 @@ class HyperBoost:
                     completed=len(items) - len(todos),
                 )
 
-            # Determine backend
             if backend == "auto":
                 if force_processes and analysis.is_picklable:
                     backend = "processes"
@@ -1142,7 +1077,6 @@ class HyperBoost:
             success = False
             fallback_reason = None
 
-            # Try Ray for large workloads
             if (
                 RAY_AVAIL
                 and backend in ["auto", "ray", "gpu"]
@@ -1183,7 +1117,6 @@ class HyperBoost:
                             f"\n⚠️  Ray failed ({type(e).__name__}), trying process pool..."
                         )
 
-            # Try GPU acceleration
             if not success and backend in ["auto", "gpu"] and GPU_AVAIL:
                 try:
                     for batch_start in range(0, len(todos), batch_size):
@@ -1215,7 +1148,6 @@ class HyperBoost:
                 except Exception:
                     pass
 
-            # Try multiprocessing
             if not success and backend in ["auto", "processes"]:
                 success, fallback_reason = cls._execute_with_processes(
                     func=func,
@@ -1237,7 +1169,6 @@ class HyperBoost:
                         "   → Falling back to threads (still parallel, but shared GIL)"
                     )
 
-            # Fallback to threads
             if not success:
 
                 def thread_worker(args):
@@ -1267,7 +1198,6 @@ class HyperBoost:
             if progress:
                 progress.stop()
 
-            # Reassemble results if items were subdivided
             if chunk_map is not None and len(items) > len(original_items):
                 results = cls._reassemble_results(
                     results, chunk_map, len(original_items), quiet
@@ -1289,7 +1219,6 @@ class HyperBoost:
     ) -> List[Any]:
         """Execute multiple independent tasks in parallel."""
 
-        # Ensure __main__ is patched
         cls._ensure_main_module_patched()
 
         tasks = list(tasks_iter)
@@ -1333,7 +1262,6 @@ class HyperBoost:
         gc.collect()
 
 
-# Module-level convenience functions
 def boost_run(task, data, **kwargs):
     return HyperBoost.run(task, data, **kwargs)
 
@@ -1346,7 +1274,6 @@ def boost_all(func_name, tasks, **kwargs):
     return HyperBoost.boost_all(func_name, tasks, **kwargs)
 
 
-# Pre-warm thread pool and GPU queue on import for faster first execution
 def _prewarm_pools() -> None:
     """
     Pre-initialize thread pool and GPU queue to avoid cold start overhead.
@@ -1356,11 +1283,8 @@ def _prewarm_pools() -> None:
         HyperBoost._init_thread_pool()
         HyperBoost._init_gpu_queue()
     except Exception:
-        # Silently ignore initialization errors
         pass
 
 
-# Only pre-warm if not in a test environment (to avoid issues with testing)
-# This checks for pytest specifically, but could be extended for other test runners if needed
 if "pytest" not in sys.modules and not os.environ.get("_TURBOSCAN_SUBPROCESS"):
     _prewarm_pools()

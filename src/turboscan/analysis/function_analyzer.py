@@ -174,7 +174,6 @@ class FunctionAnalyzer:
                 analysis.uses_threads = True
         source = cls._get_source(func)
         if source:
-            # Optimized pattern matching - check if any pattern exists
             has_thread = any(p in source for p in cls.THREAD_PATTERNS)
             has_mp = any(p in source for p in cls.MP_PATTERNS)
             has_async = any(p in source for p in cls.ASYNC_PATTERNS)
@@ -186,7 +185,6 @@ class FunctionAnalyzer:
             if has_async:
                 analysis.uses_async = True
 
-            # Count CPU and IO indicators
             cpu_indicators = sum(
                 1 for p in cls.CPU_BOUND_PATTERNS if p in source
             )

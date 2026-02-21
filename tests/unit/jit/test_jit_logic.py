@@ -13,11 +13,6 @@ def parse_module(code_str):
     return ast.parse(code_str)
 
 
-# ============================================================================
-# MATH HEAVY DETECTION TESTS
-# ============================================================================
-
-
 def test_detects_math_heavy() -> None:
     code = """
 def heavy(x):
@@ -55,11 +50,6 @@ def many_ops(a, b, c, d):
     """
     node = parse_code(code)
     assert JIT_INJECTOR._is_math_heavy(node) is True
-
-
-# ============================================================================
-# NUMBA COMPATIBILITY TESTS
-# ============================================================================
 
 
 def test_rejects_strings() -> None:
@@ -143,9 +133,9 @@ def numeric(x, y):
     return x * y + 2
     """
     node = parse_code(code)
-    # Note: depends on NUMBA_AVAIL
+
     result = JIT_INJECTOR._is_numba_compatible(node)
-    # If numba not available, should return False
+
     from turboscan.jit.injector import NUMBA_AVAIL
 
     if not NUMBA_AVAIL:
@@ -227,11 +217,6 @@ def with_open(x):
     assert JIT_INJECTOR._is_numba_compatible(node) is False
 
 
-# ============================================================================
-# VECTORIZABLE DETECTION TESTS
-# ============================================================================
-
-
 @pytest.mark.skipif(not NUMBA_AVAIL, reason="Numba not available")
 def test_detects_vectorizable() -> None:
     """Should detect simple element-wise operations with type hints."""
@@ -302,7 +287,7 @@ def bool_op(x: bool, y: bool) -> bool:
     return x and y
     """
     node = parse_code(code)
-    # Note: this might fail the computation check
+
     JIT_INJECTOR._is_vectorizable(node)
 
 
@@ -314,11 +299,6 @@ def no_compute(x: float) -> float:
     """
     node = parse_code(code)
     assert JIT_INJECTOR._is_vectorizable(node) is False
-
-
-# ============================================================================
-# LOOP DETECTION TESTS
-# ============================================================================
 
 
 def test_has_loops_for() -> None:
@@ -355,11 +335,6 @@ def no_loops(x):
     assert JIT_INJECTOR._has_loops(node) is False
 
 
-# ============================================================================
-# LOOP CONDITIONAL ASSIGNS TESTS
-# ============================================================================
-
-
 def test_has_loop_conditional_assigns() -> None:
     """Should detect conditional assignments in loops."""
     code = """
@@ -388,11 +363,6 @@ def no_conditional(x):
     assert JIT_INJECTOR._has_loop_conditional_assigns(node) is False
 
 
-# ============================================================================
-# INJECT TESTS
-# ============================================================================
-
-
 def test_inject_creates_new_injector() -> None:
     """Test creating a new JITInjector instance."""
     injector = JITInjector()
@@ -412,7 +382,7 @@ def simple(x):
     injector = JITInjector()
     tree = parse_module(code)
     result = injector.inject(tree)
-    # Should return the tree
+
     assert result is not None
 
 

@@ -21,12 +21,8 @@ except ImportError:
     cloudpickle = pickle
 
 
-# Track which classes have been patched to avoid double-patching
-# Use weakref.WeakSet to allow garbage collection and prevent id() reuse issues
 _PATCHED_CLASSES: weakref.WeakSet = weakref.WeakSet()
-_ORIGINAL_METHODS: Dict[
-    Tuple[int, str], Any
-] = {}  # (id(cls), method_name) -> original method
+_ORIGINAL_METHODS: Dict[Tuple[int, str], Any] = {}
 _PATCH_LOCK = threading.Lock()
 IPC_OFFLOAD_THRESHOLD = 10 * 1024 * 1024
 
@@ -43,13 +39,10 @@ def _is_lru_cache_method(obj) -> bool:
     if obj is None:
         return False
 
-    # Check for the lru_cache wrapper type
     try:
-        # Direct type check
         if type(obj).__name__ == "_lru_cache_wrapper":
             return True
 
-        # Check for cache_info and cache_clear (unique to lru_cache)
         has_cache_info = hasattr(obj, "cache_info") and callable(
             getattr(obj, "cache_info", None)
         )
@@ -61,7 +54,6 @@ def _is_lru_cache_method(obj) -> bool:
         if has_cache_info and has_cache_clear and has_wrapped:
             return True
 
-        # Check for functools.cache (Python 3.9+)
         if has_wrapped and has_cache_info:
             return True
 
@@ -79,13 +71,11 @@ def _find_lru_cache_methods(cls: type) -> Dict[str, Any]:
     lru_methods = {}
 
     try:
-        # Get all attributes once instead of repeatedly calling dir
         for name in dir(cls):
             if name.startswith("__") and name.endswith("__"):
-                continue  # Skip dunder methods
+                continue
 
             try:
-                # Get the attribute from the class (not instance)
                 attr = getattr(cls, name, None)
                 if attr is not None and _is_lru_cache_method(attr):
                     lru_methods[name] = attr
@@ -102,14 +92,12 @@ def _create_simple_method(original_func: Callable) -> Callable:
     Create a simple method from an lru_cache wrapped function.
     This extracts the original function and creates a new method without caching.
     """
-    # Get the original unwrapped function
+
     unwrapped = original_func
 
-    # Follow the __wrapped__ chain
     while hasattr(unwrapped, "__wrapped__"):
         unwrapped = unwrapped.__wrapped__
 
-    # Create a new function that calls the unwrapped version
     @functools.wraps(unwrapped)
     def simple_method(*args, **kwargs):
         return unwrapped(*args, **kwargs)
@@ -133,7 +121,7 @@ def patch_class_for_multiprocessing(
     """
     with _PATCH_LOCK:
         if cls in _PATCHED_CLASSES:
-            return 0  # Already patched
+            return 0
 
         lru_methods = _find_lru_cache_methods(cls)
 
@@ -146,18 +134,14 @@ def patch_class_for_multiprocessing(
 
         for method_name, lru_wrapper in lru_methods.items():
             try:
-                # Store original for potential restoration
                 _ORIGINAL_METHODS[(cls_id, method_name)] = lru_wrapper
 
-                # Create unwrapped version
                 simple_method = _create_simple_method(lru_wrapper)
 
-                # Replace on the class
                 setattr(cls, method_name, simple_method)
                 patched_count += 1
 
             except Exception:
-                # If we fail to patch one method, continue with others
                 pass
 
         _PATCHED_CLASSES.add(cls)
@@ -183,9 +167,7 @@ def patch_module_for_multiprocessing(module) -> int:
                 if obj is None:
                     continue
 
-                # Check if it's a class defined in this module
                 if isinstance(obj, type):
-                    # Only patch classes from __main__ or the target module
                     if getattr(obj, "__module__", None) == getattr(
                         module, "__name__", None
                     ):
@@ -217,23 +199,19 @@ def _get_all_referenced_classes(
     seen.add(obj_id)
 
     try:
-        # Get the object's class
         if hasattr(obj, "__class__"):
             cls = type(obj)
             if cls.__module__ == "__main__":
                 classes.add(cls)
 
-        # Check object's __dict__
         if hasattr(obj, "__dict__"):
             for attr_val in obj.__dict__.values():
                 classes.update(_get_all_referenced_classes(attr_val, seen))
 
-        # Check sequences
         if isinstance(obj, (list, tuple, set, frozenset)):
             for item in obj:
                 classes.update(_get_all_referenced_classes(item, seen))
 
-        # Check dicts
         if isinstance(obj, dict):
             for val in obj.values():
                 classes.update(_get_all_referenced_classes(val, seen))
@@ -252,10 +230,8 @@ def prepare_for_serialization(obj: Any) -> Any:
     This is the key function that should be called before serializing work items.
     """
     try:
-        # Find all __main__ classes referenced by this object
         classes = _get_all_referenced_classes(obj)
 
-        # Patch each class
         for cls in classes:
             patch_class_for_multiprocessing(cls)
     except Exception:
@@ -288,43 +264,30 @@ def _clean_for_pickle(obj: Any, seen: Optional[Set[int]] = None) -> Any:
         return obj
     seen.add(obj_id)
 
-    # First, prepare for serialization (patch classes)
     prepare_for_serialization(obj)
 
     try:
-        # Try to pickle as-is
         pickle.dumps(obj)
         return obj
     except Exception:
         pass
 
-    # Handle common unpicklable types
     if isinstance(obj, (type(lambda: None), type(print))):
         try:
             cloudpickle.dumps(obj)
             return obj
         except Exception:
-            # Return original unchanged - serialization will fail but thread fallback
-            # will work correctly since the original lambda is preserved
             return obj
 
-    # For objects with __dict__, try to clean attributes by creating a copy
-    # This applies to objects from any module to ensure consistent behavior
     if hasattr(obj, "__dict__") and hasattr(obj, "__class__"):
         try:
             cls = type(obj)
-            # Create a new instance without calling __init__
-            # This preserves the original object intact for thread fallback
+
             try:
                 cleaned_obj = object.__new__(cls)
             except TypeError:
-                # Some classes have custom __new__ that requires arguments,
-                # or inherit from types that don't support object.__new__
-                # In this case, return the original object unmodified
-                # to avoid corrupting it - serialization will fail but fallback works
                 return obj
 
-            # Copy and clean attributes to the new object
             for key, val in list(obj.__dict__.items()):
                 try:
                     pickle.dumps(val)
@@ -334,15 +297,11 @@ def _clean_for_pickle(obj: Any, seen: Optional[Set[int]] = None) -> Any:
                         cloudpickle.dumps(val)
                         cleaned_obj.__dict__[key] = val
                     except Exception:
-                        # Skip unpicklable attributes - they are omitted from the copy
-                        # The original object retains all its attributes
                         pass
             return cleaned_obj
         except Exception:
-            # If we can't create a copy, return original unmodified
             return obj
 
-    # Handle sequences by creating new containers with cleaned elements
     if isinstance(obj, list):
         return [_clean_for_pickle(item, seen) for item in obj]
     if isinstance(obj, tuple):
@@ -363,7 +322,6 @@ def _offload_large_result(data: Any, serializer) -> str:
             serializer.dump(data, f)
         return path
     except Exception:
-        # If writing fails, close/delete and re-raise
         try:
             os.close(fd)
             os.remove(path)
@@ -383,30 +341,24 @@ def _hyperboost_cloudpickle_worker(serialized_work: bytes) -> bytes:
         Cloudpickle-serialized result tuple: ('success', result) or ('error', error_info)
     """
     try:
-        # Deserialize the work item
         func, item, _key, kwargs = cloudpickle.loads(serialized_work)
 
-        # Execute the function
         result = func(item, **kwargs) if kwargs else func(item)
 
-        # Serialize result to check size
         success_payload = ("success", result)
         blob = cloudpickle.dumps(success_payload)
 
-        # Check size - if too big, offload the RESULT (not the tuple)
         if len(blob) > IPC_OFFLOAD_THRESHOLD:
             try:
                 path = _offload_large_result(result, cloudpickle)
-                # Return a special status indicating offload
+
                 return cloudpickle.dumps(("offloaded", path))
             except Exception:
-                # If offload fails, fall back to returning the blob (might deadlock, but we tried)
                 return blob
 
         return blob
 
     except Exception as e:
-        # Return error info
         error_info = {
             "type": type(e).__name__,
             "message": str(e),
@@ -430,7 +382,6 @@ def _hyperboost_worker_execute(work: Tuple) -> Tuple:
         result = func(item, **kwargs) if kwargs else func(item)
 
         try:
-            # We use the available pickle module
             serializer = pickle
             blob = serializer.dumps(result)
 
@@ -495,10 +446,9 @@ def get_patched_class_count() -> int:
     return len(_PATCHED_CLASSES)
 
 
-# Initialize by patching __main__ on import in child processes
 def _auto_patch_main() -> None:
     """Auto-patch __main__ when running in a worker process."""
-    # Only run in child processes, not the main TurboScan process
+
     if hasattr(
         sys.modules.get("turboscan.execution.hyper_boost", None),
         "_TURBOSCAN_MAIN_PROCESS",
@@ -508,7 +458,3 @@ def _auto_patch_main() -> None:
     main_mod = sys.modules.get("__main__")
     if main_mod is not None:
         patch_module_for_multiprocessing(main_mod)
-
-
-# Don't auto-patch on import - let HyperBoost control when patching happens
-# _auto_patch_main()

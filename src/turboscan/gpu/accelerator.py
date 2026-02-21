@@ -37,10 +37,8 @@ class GPUAccelerator:
     def batch_hash(self, items: List[str]) -> List[str]:
         if not items:
             return []
-        # Fast path for small to medium batches - list comprehension is fastest
-        # For very large batches (>1000), use ThreadPool to parallelize hashing
+
         if len(items) > 1000:
-            # Adapt to CPU count: use min(4, cpu_count) to avoid excessive threads
             num_workers = min(4, multiprocessing.cpu_count())
             with multiprocessing.pool.ThreadPool(processes=num_workers) as pool:
                 return pool.map(

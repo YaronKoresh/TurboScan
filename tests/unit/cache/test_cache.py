@@ -18,7 +18,7 @@ class TestBloomFilter:
 
         assert "hello" in bf
         assert "world" in bf
-        # Probability of false positive is low (1%), so this should pass
+
         assert "not_there" not in bf
 
     def test_capacity_scaling(self) -> None:
@@ -26,7 +26,6 @@ class TestBloomFilter:
         bf1 = BloomFilter(capacity=100, error_rate=0.1)
         bf2 = BloomFilter(capacity=10000, error_rate=0.01)
 
-        # Lower error rate + higher capacity = more bits
         assert len(bf2.bits) > len(bf1.bits)
 
     def test_many_items(self) -> None:
@@ -60,11 +59,11 @@ class TestHyperCache:
     @pytest.fixture
     def cache(self):
         """Create a fresh cache for each test."""
-        # Use a unique name to avoid colliding with the global singleton
+
         c = HyperCache(name="test_cache")
         yield c
         c.cleanup()
-        # Clean up disk artifacts
+
         with contextlib.suppress(BaseException):
             shutil.rmtree(Path(tempfile.gettempdir()) / ".test_cache_cache")
 
@@ -80,9 +79,6 @@ class TestHyperCache:
 
     def test_bloom_gatekeeper(self, cache) -> None:
         """Bloom filter should prevent cache lookups for missing keys."""
-        # We verify this by checking misses.
-        # If Bloom filter works, it returns False immediately.
-        # But HyperCache counts "not in bloom" as a miss too.
 
         found, _val = cache.get("missing_key")
         assert found is False
@@ -90,19 +86,15 @@ class TestHyperCache:
 
     def test_eviction_logic(self, cache) -> None:
         """Verify L1 cache evicts old items when full."""
-        # Artificially shrink max size for testing
+
         cache.l1_max = 4
 
         items = [f"key{i}" for i in range(10)]
         for i in items:
             cache.set(i, f"val{i}")
 
-        # Should have evicted about 25% of 4 = 1 item (logic: max // 4)
-        # But since we added 10, it triggered eviction multiple times.
-        # L1 size should be <= 4
         assert len(cache.l1_cache) <= 4
 
-        # Recent items should be there
         found, _ = cache.get("key9")
         assert found is True
 
@@ -115,13 +107,12 @@ class TestHyperCache:
                 self.secret = secret
 
             def __repr__(self) -> str:
-                # Flawed repr that ignores secret
+
                 return f"User({self.id})"
 
         u1 = User(1, "secret_A")
         u2 = User(1, "secret_B")
 
-        # They look the same to the cache!
         key1 = cache._make_key("process", u1)
         key2 = cache._make_key("process", u2)
 
@@ -129,17 +120,12 @@ class TestHyperCache:
             "Warning: Cache cannot distinguish objects with same string representation!"
         )
 
-    # =========================================================================
-    # ADDITIONAL TESTS FOR HIGHER COVERAGE
-    # =========================================================================
-
     def test_stats_property(self, cache) -> None:
         """Test stats property returns correct structure."""
         stats = cache.stats
         assert "hits" in stats
         assert "misses" in stats
         assert "l1_size" in stats
-        # l2_size may or may not be present depending on implementation
 
     def test_multiple_sets(self, cache) -> None:
         """Test setting multiple items."""
@@ -148,7 +134,7 @@ class TestHyperCache:
 
         for i in range(20):
             found, val = cache.get(f"key_{i}")
-            if found:  # Some may have been evicted
+            if found:
                 assert val == f"value_{i}"
 
     def test_overwrite_existing(self, cache) -> None:
@@ -170,8 +156,6 @@ class TestHyperCache:
         """Test cleanup method."""
         cache.set("key", "value")
         cache.cleanup()
-        # After cleanup, L2 should be closed
-        # L1 might still work
 
     def test_make_key_with_list(self, cache) -> None:
         """Test _make_key with list argument."""

@@ -4,7 +4,6 @@ import pytest
 
 from turboscan.io.file_reader import FastFileReader
 
-# Check if pytest-asyncio is available
 try:
     import pytest_asyncio
 
@@ -16,7 +15,7 @@ except ImportError:
 class TestFastFileReader:
     @pytest.fixture
     def reader(self):
-        # Use 2 workers to test parallelism without spawning too many threads
+
         return FastFileReader(max_workers=2)
 
     def test_read_small_file_standard(self, reader, tmp_path) -> None:
@@ -29,7 +28,7 @@ class TestFastFileReader:
 
     def test_read_large_file_mmap(self, reader, tmp_path) -> None:
         """Large files (>64KB) should be read via mmap."""
-        # Create 65KB file
+
         content = "a" * (65 * 1024)
         f = tmp_path / "large.txt"
         f.write_text(content, encoding="utf-8")

@@ -30,11 +30,6 @@ except ImportError:
     np = None
 
 
-# ============================================================================
-# LRU CACHE REMOVAL - Critical fix for multiprocessing serialization
-# ============================================================================
-
-
 class LRUCacheRemover(ast.NodeTransformer):
     """
     AST transformer that removes @lru_cache and @functools.lru_cache decorators.
@@ -58,9 +53,7 @@ class LRUCacheRemover(ast.NodeTransformer):
     def __init__(self, verbose: bool = False) -> None:
         self.verbose = verbose
         self.removed_count = 0
-        self.removed_locations: List[
-            Tuple[str, int, str]
-        ] = []  # (class, line, method)
+        self.removed_locations: List[Tuple[str, int, str]] = []
         self._current_class: Optional[str] = None
 
     def visit_ClassDef(self, node: ast.ClassDef) -> ast.ClassDef:
@@ -107,15 +100,13 @@ class LRUCacheRemover(ast.NodeTransformer):
 
     def _is_lru_cache_decorator(self, decorator: ast.expr) -> bool:
         """Check if a decorator is @lru_cache or @functools.lru_cache."""
-        # Case 1: @lru_cache or @cache (bare name)
+
         if isinstance(decorator, ast.Name):
             return decorator.id in self.LRU_CACHE_NAMES
 
-        # Case 2: @lru_cache(maxsize=N) or @cache() (call)
         if isinstance(decorator, ast.Call):
             return self._is_lru_cache_decorator(decorator.func)
 
-        # Case 3: @functools.lru_cache or @functools.cache (attribute)
         if isinstance(decorator, ast.Attribute) and isinstance(
             decorator.value, ast.Name
         ):
@@ -151,11 +142,6 @@ def remove_lru_cache_from_ast(
     tree = transformer.visit(tree)
     ast.fix_missing_locations(tree)
     return tree, transformer.removed_count
-
-
-# ============================================================================
-# MAIN PARALLELIZER CLASS
-# ============================================================================
 
 
 class HyperAutoParallelizer(ast.NodeTransformer):
@@ -224,7 +210,6 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             "close",
         }
 
-        # LRU cache removal settings
         self.remove_lru_cache = remove_lru_cache
         self.verbose = verbose
         self.lru_removed_count = 0
@@ -234,7 +219,7 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         Visit the module - this is where we remove @lru_cache FIRST,
         before any other transformations.
         """
-        # CRITICAL: Remove @lru_cache decorators FIRST
+
         if self.remove_lru_cache:
             lru_remover = LRUCacheRemover(verbose=self.verbose)
             node = lru_remover.visit(node)
@@ -245,7 +230,6 @@ class HyperAutoParallelizer(ast.NodeTransformer):
                     f"  [LRU Fix] Removed {self.lru_removed_count} @lru_cache decorators for multiprocessing"
                 )
 
-        # Then continue with normal parallelization
         self.generic_visit(node)
         return node
 
@@ -374,8 +358,6 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         self.vectorized_count += 1
         return [node]
 
-    # ========== CRITICAL FIX: New helper methods for proper variable detection ==========
-
     def _extract_names_from_target(self, target: ast.AST) -> Set[str]:
         """Extract all variable names from an assignment target (handles unpacking)."""
         names = set()
@@ -386,7 +368,7 @@ class HyperAutoParallelizer(ast.NodeTransformer):
                 names.update(self._extract_names_from_target(elt))
         elif isinstance(target, ast.Starred):
             names.update(self._extract_names_from_target(target.value))
-        # Subscript and Attribute targets don't define new names
+
         return names
 
     def _get_all_assigned_names(
@@ -403,35 +385,29 @@ class HyperAutoParallelizer(ast.NodeTransformer):
 
         for node in nodes:
             for child in ast.walk(node):
-                # Regular assignment: x = value
                 if isinstance(child, ast.Assign):
                     for target in child.targets:
                         assigned.update(self._extract_names_from_target(target))
 
-                # Annotated assignment: x: int = value
                 elif isinstance(child, ast.AnnAssign):
                     if child.target is not None:
                         assigned.update(
                             self._extract_names_from_target(child.target)
                         )
 
-                # Augmented assignment: x += value
                 elif isinstance(child, ast.AugAssign):
                     if include_aug and isinstance(child.target, ast.Name):
                         assigned.add(child.target.id)
 
-                # Named expression: (x := value)
                 elif isinstance(child, ast.NamedExpr):
                     if isinstance(child.target, ast.Name):
                         assigned.add(child.target.id)
 
-                # For loop targets (nested loops)
                 elif isinstance(child, ast.For):
                     assigned.update(
                         self._extract_names_from_target(child.target)
                     )
 
-                # With statement targets
                 elif isinstance(child, ast.With):
                     for item in child.items:
                         if item.optional_vars:
@@ -441,12 +417,10 @@ class HyperAutoParallelizer(ast.NodeTransformer):
                                 )
                             )
 
-                # Exception handlers
                 elif isinstance(child, ast.ExceptHandler):
                     if child.name:
                         assigned.add(child.name)
 
-                # Comprehensions
                 elif isinstance(child, ast.comprehension):
                     assigned.update(
                         self._extract_names_from_target(child.target)
@@ -462,11 +436,8 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         """
         local_vars = set()
 
-        # Add loop iteration variable(s)
         local_vars.update(self._extract_names_from_target(node.target))
 
-        # Add variables explicitly assigned (=), but NOT just augmented (+=)
-        # passing include_aug=False is the key fix here
         local_vars.update(
             self._get_all_assigned_names(node.body, include_aug=False)
         )
@@ -504,35 +475,20 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         """
         allowed_accumulators = allowed_accumulators or set()
 
-        # Get all variables assigned anywhere in the loop body
         loop_assigns = self._get_all_assigned_names(node.body)
 
-        # Get the loop iteration variable(s)
         loop_targets = self._extract_names_from_target(node.target)
 
-        # Variables that are assigned in the loop but are NOT the loop variable
-        # These could potentially be "result" variables
         potential_results = loop_assigns - loop_targets
 
-        # Check for assignments to variables that might exist in outer scope
-        # and are being modified by the loop (not just used locally)
         for var in potential_results:
-            # If this variable is also READ before being assigned in the same iteration,
-            # it might be a loop-carried dependency.
             if var in outer_scope_vars:
-                # FIX: If it's a known accumulation variable, it's allowed!
                 if var in allowed_accumulators:
                     continue
 
-                # Variable from outer scope is being assigned in loop
-                # This is problematic because parallel workers won't share state
                 return True
 
-        # Check for break/early-return patterns that depend on finding something
-        # These often indicate loops that shouldn't be parallelized
         return any(isinstance(child, ast.Break) for child in ast.walk(node))
-
-    # ========== END CRITICAL FIX ==========
 
     def _create_loop_worker(
         self,
@@ -559,11 +515,8 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             target_id = "item"
             loop_var_names = set()
 
-        # CRITICAL FIX: Filter out variables that are assigned inside the loop
-        # They should NOT be passed from outer scope
         loop_body_assigns = self._get_all_assigned_names(node.body)
 
-        # Remove loop-assigned variables from outer_reads
         outer_reads = outer_reads - loop_body_assigns
 
         filtered_outer_reads = (
@@ -635,13 +588,9 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             ):
                 sub = assign.targets[0]
                 if isinstance(sub.value, ast.Name):
-                    # CRITICAL FIX: Check if this is a simple 1D subscript
-                    # Multi-dimensional subscripts (like array[:, i]) are NOT safe
                     slice_node = sub.slice
-                    is_simple_subscript = (
-                        isinstance(
-                            slice_node, (ast.Name, ast.Constant)
-                        )  # array[0] (unlikely but safe)
+                    is_simple_subscript = isinstance(
+                        slice_node, (ast.Name, ast.Constant)
                     )
                     if is_simple_subscript:
                         target_list_name = sub.value.id
@@ -1000,15 +949,11 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         return result_nodes
 
     def _is_candidate_for_task(self, node: ast.AST) -> bool:
-        # Side-effect detection for standalone expressions
+
         if isinstance(node, ast.Expr):
             val = node.value
             if isinstance(val, ast.Call):
-                # If calling a method on an object (e.g. self.init(), obj.update()),
-                # assume it mutates the object.
-                # Running this in a process would lose the mutation in the main process.
                 if isinstance(val.func, ast.Attribute):
-                    # Exception: Allow known transparent/io calls like print, logger.info, etc.
                     name = val.func.attr
                     if name not in (
                         "print",
@@ -1022,7 +967,6 @@ class HyperAutoParallelizer(ast.NodeTransformer):
                     ):
                         return False
 
-        # Standard candidate check
         val = node.value if isinstance(node, (ast.Expr, ast.Assign)) else node
         if not isinstance(val, ast.Call):
             return False
@@ -1413,42 +1357,30 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             return False
         loop_var = node.target.id
 
-        # Check if loop variable is used in any subscript assignment target
         for stmt in node.body:
             for child in ast.walk(stmt):
                 if isinstance(child, ast.Assign):
                     for target in child.targets:
                         if isinstance(target, ast.Subscript):
-                            # Check if the slice uses the loop variable
                             slice_node = target.slice
                             if self._uses_name(slice_node, loop_var):
-                                # Found: array[...i...] = ... where i is loop var
-
-                                # CRITICAL FIX: Multi-dimensional subscripts are ALWAYS unsafe
-                                # e.g., array[:, i] or array[i, :] or array[a, b, i]
-                                # These create Tuple slices that can't be correctly reassembled
                                 if isinstance(slice_node, ast.Tuple):
                                     return True
 
-                                # Also check for Slice objects - indicates complex indexing
-                                # e.g., array[i:j] where i is loop var
                                 if isinstance(slice_node, ast.Slice):
                                     return True
 
-                                # Multiple statements with indexed assignment - always unsafe
                                 if len(node.body) > 1:
                                     return True
 
-                                # Single statement - check if value has complex slicing
                                 value = child.value
                                 for val_child in ast.walk(value):
                                     if isinstance(val_child, ast.Subscript):
                                         if isinstance(
                                             val_child.slice, ast.Slice
                                         ):
-                                            # Slicing in the value - complex pattern
                                             return True
-                                        # Also catch multi-dimensional reads
+
                                         if isinstance(
                                             val_child.slice, ast.Tuple
                                         ):
@@ -1496,7 +1428,7 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             return True
         if isinstance(node, ast.Tuple):
             return any(self._uses_name(elt, name) for elt in node.elts)
-        if isinstance(node, ast.Index):  # Python 3.8 compat
+        if isinstance(node, ast.Index):
             return self._uses_name(node.value, name)
         return any(
             self._uses_name(child, name) for child in ast.iter_child_nodes(node)
@@ -1525,9 +1457,8 @@ class HyperAutoParallelizer(ast.NodeTransformer):
                     for target in child.targets:
                         if isinstance(target, ast.Subscript):
                             slice_node = target.slice
-                            # Check if it's a multi-dimensional subscript (Tuple)
+
                             if isinstance(slice_node, ast.Tuple):
-                                # Check if any element uses the loop variable
                                 if self._uses_name(slice_node, loop_var):
                                     return True
         return False
@@ -1535,7 +1466,6 @@ class HyperAutoParallelizer(ast.NodeTransformer):
     def visit_For(self, node):
         node = self._visit_container(node)
 
-        # Check for control flow that breaks parallelization
         for child in ast.walk(node):
             if isinstance(
                 child,
@@ -1543,22 +1473,15 @@ class HyperAutoParallelizer(ast.NodeTransformer):
             ):
                 return node
 
-        # Skip loops where loop variable is used as array index
-        # AND range doesn't start from 0
         if self._has_index_offset_pattern(node):
             return node
 
-        # Skip loops where loop variable is used as index in complex assignments
-        # These can't be correctly parallelized with the current implementation
         if self._has_loop_var_indexed_assignment(node):
             return node
 
-        # CRITICAL FIX: Also check for multi-dimensional subscript assignments
-        # This catches patterns like array[:, t] = ... that _has_loop_var_indexed_assignment might miss
         if self._has_multidim_subscript_assignment(node):
             return node
 
-        # Check if this is a parallelizable iteration pattern
         is_candidate = False
         if isinstance(node.iter, ast.Call) and isinstance(
             node.iter.func, ast.Name
@@ -1577,14 +1500,11 @@ class HyperAutoParallelizer(ast.NodeTransformer):
         accumulations = self._get_accumulations(node)
         outer_reads = self._get_loop_outer_reads(node)
 
-        # CRITICAL FIX: Check for problematic patterns before parallelizing
-        # Get variables from outer scope to detect potential issues
         outer_scope_vars = set()
         if self.scope_stack:
             locals_created, arguments = self.scope_stack[-1]
             outer_scope_vars = locals_created | arguments
 
-        # Pass accumulations keys to be exempted from "unsafe outer write" check
         if self._has_problematic_loop_patterns(
             node, outer_scope_vars, set(accumulations.keys())
         ):

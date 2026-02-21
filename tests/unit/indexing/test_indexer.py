@@ -30,8 +30,8 @@ class TestHyperIndexer:
         assert sig.kwonly_args == {"c", "d"}
         assert sig.vararg == "args"
         assert sig.kwarg == "kwargs"
-        assert sig.min_pos == 1  # 'a' is required, 'b' has default
-        assert sig.required_kwonly == {"c"}  # 'd' has default
+        assert sig.min_pos == 1
+        assert sig.required_kwonly == {"c"}
 
     def test_getattr_detection(self, mod_info) -> None:
         """Should detect dynamic module attributes."""
@@ -73,20 +73,16 @@ from ..parent import *
         """
         self.index_code(code, mod_info)
 
-        # os -> mapped to os
         assert "os" in mod_info.imports
-        # sys -> mapped to system
+
         assert "system" in mod_info.imports
         assert mod_info.imports["system"] == ("sys", 0, None)
 
-        # math.sin
         assert "sin" in mod_info.imports
         assert mod_info.imports["sin"] == ("math", 0, "sin")
 
-        # Relative import
         assert "sibling" in mod_info.imports
-        assert mod_info.imports["sibling"][1] == 1  # level 1
+        assert mod_info.imports["sibling"][1] == 1
 
-        # Star import
         assert len(mod_info.star_imports) == 1
-        assert mod_info.star_imports[0] == ("parent", 2)  # level 2
+        assert mod_info.star_imports[0] == ("parent", 2)

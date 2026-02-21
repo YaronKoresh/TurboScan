@@ -25,7 +25,7 @@ from turboscan.hardware.config import HARDWARE
 class HyperCache:
     def __init__(self, name: str = "turbo") -> None:
         self.name = name
-        # Use OrderedDict for L1 cache to maintain insertion order for LRU eviction
+
         self.l1_cache: OrderedDict[str, Any] = OrderedDict()
         self.l1_max = 50000
         self.bloom = BloomFilter(capacity=1000000)
@@ -44,7 +44,7 @@ class HyperCache:
             self._l2_initialized = True
             if CACHE_AVAIL:
                 cache_dir = Path(tempfile.gettempdir()) / f".{self.name}_cache"
-                # Create directory once if needed
+
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 try:
                     self._l2_cache = FanoutCache(
@@ -72,7 +72,7 @@ class HyperCache:
         return f"{func_name}:{item_hash}"
 
     def get(self, key: str) -> Tuple[bool, Any]:
-        # Fast path: check bloom filter without lock
+
         if key not in self.bloom:
             with self._lock:
                 self._misses += 1
@@ -83,7 +83,6 @@ class HyperCache:
                 self._hits += 1
                 return (True, val)
 
-        # Check L2 cache
         l2 = self.l2_cache
         if l2 and key in l2:
             val = l2[key]
@@ -116,15 +115,12 @@ class HyperCache:
         - Memory: Not holding too many stale entries
         - Thrashing: 10% vs 25% reduces eviction frequency by 60%
         """
-        # Use OrderedDict's move_to_end for O(1) LRU behavior
+
         if key in self.l1_cache:
-            # Move existing key to end (most recently used)
             self.l1_cache.move_to_end(key)
             self.l1_cache[key] = value
         else:
-            # Add new key
             if len(self.l1_cache) >= self.l1_max:
-                # Remove oldest items - evict 10% to reduce thrashing
                 num_to_remove = max(1, self.l1_max // 10)
                 for _ in range(num_to_remove):
                     self.l1_cache.popitem(last=False)

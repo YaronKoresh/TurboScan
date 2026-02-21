@@ -27,15 +27,10 @@ def failing_func(x):
     return x * 2
 
 
-# ============================================================================
-# BASIC FUNCTIONALITY TESTS
-# ============================================================================
-
-
 def test_hyper_map() -> None:
     """Test basic map functionality."""
     inputs = [1, 2, 3, 4]
-    # Use threads to avoid overhead in unit tests
+
     results = HyperBoost.map(square, inputs, backend="threads", quiet=True)
     assert results == [1, 4, 9, 16]
 
@@ -65,11 +60,6 @@ def test_large_input() -> None:
     assert results == expected
 
 
-# ============================================================================
-# BACKEND TESTS
-# ============================================================================
-
-
 def test_threads_backend() -> None:
     """Test explicit threads backend."""
     inputs = [1, 2, 3, 4, 5]
@@ -91,31 +81,18 @@ def test_auto_backend() -> None:
     assert results == [1, 4, 9, 16, 25]
 
 
-# ============================================================================
-# ERROR HANDLING TESTS
-# ============================================================================
-
-
 def test_error_propagation() -> None:
     """Test that errors in worker functions are properly propagated."""
     inputs = [1, 2, 3, 4]
 
-    # The error should be propagated (or handled gracefully)
-    # Depending on implementation, this might raise or return partial results
     try:
         results = HyperBoost.run(
             failing_func, inputs, backend="threads", quiet=True
         )
-        # If no exception, check that we got some results
+
         assert len(results) == len(inputs)
     except Exception as e:
-        # If exception is raised, that's also acceptable behavior
         assert "Cannot process 3" in str(e) or isinstance(e, ValueError)
-
-
-# ============================================================================
-# STARMAP TESTS
-# ============================================================================
 
 
 def test_starmap_three_args() -> None:
@@ -133,16 +110,11 @@ def test_starmap_empty() -> None:
     assert results == []
 
 
-# ============================================================================
-# MAP TESTS
-# ============================================================================
-
-
 def test_map_with_filter() -> None:
     """Test map combined with filtering logic."""
     inputs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     results = HyperBoost.map(square, inputs, backend="threads", quiet=True)
-    # Filter out odd squares
+
     filtered = [r for r in results if r % 2 == 0]
     assert filtered == [4, 16, 36, 64, 100]
 
@@ -153,11 +125,6 @@ def test_map_preserves_order() -> None:
     results = HyperBoost.map(square, inputs, backend="threads", quiet=True)
     expected = [x * x for x in inputs]
     assert results == expected
-
-
-# ============================================================================
-# EDGE CASE TESTS
-# ============================================================================
 
 
 def test_none_in_results() -> None:
@@ -209,26 +176,14 @@ def test_complex_objects() -> None:
     ]
 
 
-# ============================================================================
-# PERFORMANCE AND CHUNKING TESTS
-# ============================================================================
-
-
 def test_chunking_with_workers() -> None:
     """Test that chunking works correctly (Auto-scaling mode)."""
     inputs = list(range(100))
 
-    # FIX: Removed 'workers=4'. TurboScan automatically uses ALL resources.
     results = HyperBoost.run(square, inputs, backend="threads", quiet=True)
 
-    # Verify results to ensure the automatic chunking worked
     expected = [x**2 for x in inputs]
     assert sorted(results) == sorted(expected)
-
-
-# ============================================================================
-# LAMBDA AND CLOSURE TESTS
-# ============================================================================
 
 
 def test_lambda_functions() -> None:
@@ -240,7 +195,6 @@ def test_lambda_functions() -> None:
         )
         assert results == [3, 6, 9, 12]
     except Exception:
-        # If cloudpickle not available, this might fail - that's okay
         pytest.skip("Lambda serialization not supported")
 
 
@@ -258,21 +212,15 @@ def test_closure() -> None:
     assert results == [5, 10, 15, 20]
 
 
-# ============================================================================
-# MIN_CHUNKS AUTO-SCALING TESTS
-# ============================================================================
-
-
 def test_min_chunks_parameter() -> None:
     """Test that min_chunks parameter is accepted."""
     inputs = [1, 2, 3, 4, 5]
-    # Should work with min_chunks=None (default)
+
     results = HyperBoost.run(
         square, inputs, backend="threads", quiet=True, min_chunks=None
     )
     assert results == [1, 4, 9, 16, 25]
 
-    # Should work with explicit min_chunks
     results = HyperBoost.run(
         square, inputs, backend="threads", quiet=True, min_chunks=4
     )
@@ -298,15 +246,13 @@ def test_min_chunks_with_numpy_arrays() -> None:
     def sum_array(arr):
         return np.sum(arr)
 
-    # Create a large array that should be subdivided
     arr = np.arange(1000)
     inputs = [arr]
 
-    # With min_chunks='auto', should attempt subdivision
     results = HyperBoost.run(
         sum_array, inputs, backend="threads", quiet=True, min_chunks="auto"
     )
-    # Results should be reassembled to match expected
+
     assert len(results) == 1
 
 
@@ -316,7 +262,6 @@ def test_min_chunks_with_lists() -> None:
     def sum_list(lst):
         return sum(lst)
 
-    # Create a large list
     large_list = list(range(100))
     inputs = [large_list]
 
@@ -341,22 +286,15 @@ def test_min_chunks_invalid_value() -> None:
     """Test that invalid min_chunks values are handled gracefully."""
     inputs = [1, 2, 3]
 
-    # Negative value should fall back to default
     results = HyperBoost.run(
         square, inputs, backend="threads", quiet=True, min_chunks=-1
     )
     assert results == [1, 4, 9]
 
-    # Zero should fall back to default
     results = HyperBoost.run(
         square, inputs, backend="threads", quiet=True, min_chunks=0
     )
     assert results == [1, 4, 9]
-
-
-# ============================================================================
-# TASK CHAINING TESTS
-# ============================================================================
 
 
 def double(x):
@@ -373,7 +311,7 @@ def test_task_chaining() -> None:
     results = HyperBoost.run(
         [square, double], inputs, backend="threads", quiet=True
     )
-    # square then double: 1->1->2, 2->4->8, 3->9->18, 4->16->32
+
     assert results == [2, 8, 18, 32]
 
 
@@ -383,7 +321,7 @@ def test_task_chaining_three_functions() -> None:
     results = HyperBoost.run(
         [increment, square, double], inputs, backend="threads", quiet=True
     )
-    # increment then square then double: 1->2->4->8, 2->3->9->18, 3->4->16->32
+
     assert results == [8, 18, 32]
 
 
@@ -391,13 +329,8 @@ def test_task_chaining_empty() -> None:
     """Test empty task chain."""
     inputs = [1, 2, 3]
     results = HyperBoost.run([], inputs, backend="threads", quiet=True)
-    # Empty chain should return original items
+
     assert results == [1, 2, 3]
-
-
-# ============================================================================
-# BOOST_ALL TESTS
-# ============================================================================
 
 
 def test_boost_all_basic() -> None:
@@ -430,18 +363,13 @@ def test_boost_all_single_task() -> None:
     assert results == [42]
 
 
-# ============================================================================
-# RECURSIVE PARALLELIZATION PREVENTION TESTS
-# ============================================================================
-
-
 def test_recursive_parallelization_prevented() -> None:
     """Test that recursive HyperBoost.run calls fall back to sequential."""
     call_count = [0]
 
     def nested_run(x):
         call_count[0] += 1
-        # Try to call HyperBoost.run from within a worker
+
         inner_results = HyperBoost.run(
             square, [x], backend="threads", quiet=True
         )
@@ -451,11 +379,6 @@ def test_recursive_parallelization_prevented() -> None:
     results = HyperBoost.run(nested_run, inputs, backend="threads", quiet=True)
     assert results == [1, 4, 9]
     assert call_count[0] == 3
-
-
-# ============================================================================
-# CACHING TESTS
-# ============================================================================
 
 
 def test_caching_enabled() -> None:
@@ -468,19 +391,16 @@ def test_caching_enabled() -> None:
 
     inputs = [1, 2, 3]
 
-    # First run
     results1 = HyperBoost.run(
         counting_square, inputs, backend="threads", quiet=True, use_cache=True
     )
     call_count[0]
 
-    # Second run with same inputs should use cache
     results2 = HyperBoost.run(
         counting_square, inputs, backend="threads", quiet=True, use_cache=True
     )
 
     assert results1 == results2
-    # Note: cache may not work for all items, so we just verify results are correct
 
 
 def test_caching_disabled() -> None:
@@ -492,14 +412,9 @@ def test_caching_disabled() -> None:
     assert results == [1, 4, 9]
 
 
-# ============================================================================
-# DEBUG MODE TESTS
-# ============================================================================
-
-
 def test_debug_mode_toggle() -> None:
     """Test that debug mode can be toggled."""
-    # Save original state
+
     original = HyperBoost.DEBUG
 
     try:
@@ -509,13 +424,7 @@ def test_debug_mode_toggle() -> None:
         HyperBoost.set_debug(False)
         assert HyperBoost.DEBUG is False
     finally:
-        # Restore original state
         HyperBoost.DEBUG = original
-
-
-# ============================================================================
-# GENERATOR INPUT TESTS
-# ============================================================================
 
 
 def test_generator_input() -> None:
@@ -535,11 +444,6 @@ def test_iterator_input() -> None:
     assert results == [1, 4, 9, 16, 25]
 
 
-# ============================================================================
-# BATCH SIZE TESTS
-# ============================================================================
-
-
 def test_custom_batch_size() -> None:
     """Test custom batch size parameter."""
     inputs = list(range(100))
@@ -555,11 +459,6 @@ def test_batch_size_larger_than_input() -> None:
     assert results == [1, 4, 9]
 
 
-# ============================================================================
-# FORCE_PROCESSES TESTS
-# ============================================================================
-
-
 def test_force_processes() -> None:
     """Test force_processes parameter."""
     inputs = [1, 2, 3, 4, 5]
@@ -567,11 +466,6 @@ def test_force_processes() -> None:
         square, inputs, backend="auto", quiet=True, force_processes=True
     )
     assert results == [1, 4, 9, 16, 25]
-
-
-# ============================================================================
-# MAP AND STARMAP ADDITIONAL TESTS
-# ============================================================================
 
 
 def test_map_with_multiple_iterables() -> None:
@@ -587,11 +481,6 @@ def test_starmap_with_kwargs() -> None:
     inputs = [(1, 2), (3, 4), (5, 6)]
     results = HyperBoost.starmap(add, inputs, backend="threads", quiet=True)
     assert results == [3, 7, 11]
-
-
-# ============================================================================
-# EDGE CASES FOR DIFFERENT DATA TYPES
-# ============================================================================
 
 
 def test_string_processing() -> None:
@@ -627,35 +516,23 @@ def test_nested_list_processing() -> None:
     assert results == [[1, 2, 3, 4], [5, 6, 7, 8]]
 
 
-# ============================================================================
-# SHUTDOWN TESTS
-# ============================================================================
-
-
 def test_shutdown() -> None:
     """Test HyperBoost shutdown."""
-    # First, ensure thread pool is initialized
+
     HyperBoost._init_thread_pool()
     assert HyperBoost._thread_pool is not None
 
-    # Shutdown
     HyperBoost.shutdown()
     assert HyperBoost._thread_pool is None
 
-    # Should be able to run again after shutdown
     inputs = [1, 2, 3]
     results = HyperBoost.run(square, inputs, backend="threads", quiet=True)
     assert results == [1, 4, 9]
 
 
-# ============================================================================
-# INTERNAL METHODS TESTS
-# ============================================================================
-
-
 def test_init_thread_pool() -> None:
     """Test thread pool initialization."""
-    HyperBoost.shutdown()  # Ensure clean state
+    HyperBoost.shutdown()
     HyperBoost._init_thread_pool()
     assert HyperBoost._thread_pool is not None
 
@@ -663,13 +540,12 @@ def test_init_thread_pool() -> None:
 def test_init_gpu_queue() -> None:
     """Test GPU queue initialization."""
     HyperBoost._init_gpu_queue()
-    # GPU queue may or may not exist depending on hardware
 
 
 def test_get_effective_min_chunks_none() -> None:
     """Test _get_effective_min_chunks with None."""
     result = HyperBoost._get_effective_min_chunks(None, 10)
-    assert result == 10  # Should return num_items when None
+    assert result == 10
 
 
 def test_get_effective_min_chunks_auto() -> None:
@@ -684,23 +560,22 @@ def test_get_effective_min_chunks_auto() -> None:
 def test_get_effective_min_chunks_int() -> None:
     """Test _get_effective_min_chunks with integer."""
     result = HyperBoost._get_effective_min_chunks(50, 10)
-    assert result == 50  # Should use min_chunks when larger
+    assert result == 50
 
 
 def test_get_effective_min_chunks_invalid() -> None:
     """Test _get_effective_min_chunks with invalid value."""
     result = HyperBoost._get_effective_min_chunks(-5, 10)
-    assert result == 10  # Should fall back to num_items
+    assert result == 10
 
 
 def test_is_chunkable_item_list() -> None:
     """Test _is_chunkable_item with list."""
-    # Lists of numbers are NOT chunkable (auto-chunking is only for complex objects)
-    assert HyperBoost._is_chunkable_item([1, 2, 3]) is False
-    assert HyperBoost._is_chunkable_item([1]) is False  # Single element
-    assert HyperBoost._is_chunkable_item([]) is False  # Empty
 
-    # Lists of objects with __dict__ ARE chunkable
+    assert HyperBoost._is_chunkable_item([1, 2, 3]) is False
+    assert HyperBoost._is_chunkable_item([1]) is False
+    assert HyperBoost._is_chunkable_item([]) is False
+
     class Obj:
         pass
 
@@ -709,7 +584,7 @@ def test_is_chunkable_item_list() -> None:
 
 def test_is_chunkable_item_tuple() -> None:
     """Test _is_chunkable_item with tuple."""
-    # Tuples of numbers are NOT chunkable (auto-chunking is only for complex objects)
+
     assert HyperBoost._is_chunkable_item((1, 2, 3)) is False
     assert HyperBoost._is_chunkable_item((1,)) is False
 
@@ -719,15 +594,12 @@ def test_is_chunkable_item_numpy() -> None:
     try:
         import numpy as np
 
-        # 1D arrays are NOT chunkable (only 3D+ arrays are auto-chunked)
         arr = np.array([1, 2, 3, 4, 5])
         assert HyperBoost._is_chunkable_item(arr) is False
 
-        # 2D arrays are NOT chunkable
         arr_2d = np.zeros((3, 4))
         assert HyperBoost._is_chunkable_item(arr_2d) is False
 
-        # 3D+ arrays ARE chunkable
         arr_3d = np.zeros((2, 3, 4))
         assert HyperBoost._is_chunkable_item(arr_3d) is True
 
@@ -791,7 +663,7 @@ def test_subdivide_items_with_tuples() -> None:
     """Test _subdivide_items with tuples."""
     items = [tuple(range(20))]
     result, _chunk_map = HyperBoost._subdivide_items(items, 4)
-    # Should preserve tuple type
+
     for item in result:
         if isinstance(item, (list, tuple)):
             assert isinstance(item, tuple)
@@ -801,7 +673,7 @@ def test_subdivide_items_non_chunkable() -> None:
     """Test _subdivide_items with non-chunkable items."""
     items = [1, 2, 3]
     result, _chunk_map = HyperBoost._subdivide_items(items, 10)
-    assert len(result) == 3  # Can't subdivide scalars
+    assert len(result) == 3
 
 
 def test_reassemble_results_no_subdivision() -> None:
@@ -817,7 +689,6 @@ def test_reassemble_results_with_numpy() -> None:
     try:
         import numpy as np
 
-        # Simulate subdivided numpy results
         chunk1 = np.array([1, 2])
         chunk2 = np.array([3, 4])
         results = [chunk1, chunk2]
@@ -844,11 +715,8 @@ def test_reassemble_results_with_2d_numpy() -> None:
     try:
         import numpy as np
 
-        # Simulate 2D arrays split along axis=1 (time dimension in voice conversion)
-        # Original shape would be (1025, 100) - Freq x Time
-        # After splitting into 2 chunks along axis=1
-        chunk1 = np.random.rand(1025, 50)  # First half of time
-        chunk2 = np.random.rand(1025, 50)  # Second half of time
+        chunk1 = np.random.rand(1025, 50)
+        chunk2 = np.random.rand(1025, 50)
 
         results = [chunk1, chunk2]
         chunk_map = [(0, 0, 2), (0, 1, 2)]
@@ -856,19 +724,13 @@ def test_reassemble_results_with_2d_numpy() -> None:
         reassembled = HyperBoost._reassemble_results(results, chunk_map, 1)
 
         assert len(reassembled) == 1
-        # Should concatenate along axis=1 to get (1025, 100)
+
         assert reassembled[0].shape == (1025, 100)
 
-        # Verify the data matches - first half and second half should be preserved
         assert np.array_equal(reassembled[0][:, :50], chunk1)
         assert np.array_equal(reassembled[0][:, 50:], chunk2)
     except ImportError:
         pytest.skip("NumPy not available")
-
-
-# ============================================================================
-# FUNCTION ANALYSIS TESTS
-# ============================================================================
 
 
 def test_function_analysis() -> None:
@@ -892,16 +754,10 @@ def test_cpu_bound_detection() -> None:
             total += i * x
         return total
 
-    # Just verify it works
     results = HyperBoost.run(
         cpu_intensive, [1, 2, 3], backend="threads", quiet=True
     )
     assert len(results) == 3
-
-
-# ============================================================================
-# PROCESSES BACKEND TESTS
-# ============================================================================
 
 
 def test_processes_backend_simple() -> None:
@@ -930,11 +786,6 @@ def test_processes_backend_with_imports() -> None:
     assert results == [1.0, 2.0, 3.0, 4.0]
 
 
-# ============================================================================
-# QUIET MODE TESTS
-# ============================================================================
-
-
 def test_quiet_mode_true() -> None:
     """Test quiet mode suppresses output."""
     inputs = list(range(100))
@@ -949,11 +800,6 @@ def test_quiet_mode_false() -> None:
     assert results == [1, 4, 9]
 
 
-# ============================================================================
-# EXCEPTION IN WORKER TESTS
-# ============================================================================
-
-
 def test_exception_propagates() -> None:
     """Test that exceptions from workers propagate correctly."""
 
@@ -966,16 +812,11 @@ def test_exception_propagates() -> None:
 
 def test_partial_failure() -> None:
     """Test behavior with partial failures."""
-    # This depends on implementation - may propagate first error or collect all
+
     with pytest.raises(ValueError):
         HyperBoost.run(
             failing_func, [1, 2, 3, 4], backend="threads", quiet=True
         )
-
-
-# ============================================================================
-# MEMORY HANDLING TESTS
-# ============================================================================
 
 
 def test_large_result_handling() -> None:
@@ -993,11 +834,6 @@ def test_large_result_handling() -> None:
     assert len(results[2]) == 3000
 
 
-# ============================================================================
-# PARALLEL EXECUTION VERIFICATION
-# ============================================================================
-
-
 def test_actual_parallelism() -> None:
     """Verify that execution is actually parallel."""
     import time
@@ -1012,6 +848,5 @@ def test_actual_parallelism() -> None:
     )
     elapsed = time.time() - start
 
-    # With parallelism, should be much faster than 0.4s
-    assert elapsed < 0.35  # Allow some overhead
+    assert elapsed < 0.35
     assert results == [2, 4, 6, 8]

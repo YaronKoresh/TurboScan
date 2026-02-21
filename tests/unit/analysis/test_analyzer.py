@@ -5,8 +5,6 @@ import numpy as np
 
 from turboscan.analysis.function_analyzer import FunctionAnalyzer
 
-# --- Helper Functions (Must be at module level for inspect.getsource to work) ---
-
 
 def simple_cpu_task(x):
     """Pure CPU task, no threads."""
@@ -31,12 +29,11 @@ def io_bound_task(path):
         return f.read()
 
 
-# Closure test helper
 def make_closure_with_lock():
     lock = threading.Lock()
 
     def inner() -> None:
-        # This function "closes over" a lock
+
         with lock:
             pass
 
@@ -57,14 +54,12 @@ class TestFunctionAnalyzer:
         """Should detect file operations as IO bound."""
         analysis = FunctionAnalyzer.analyze(io_bound_task)
         assert analysis.estimated_weight == "io_bound"
-        # IO bound usually prefers threads, but your logic defaults to processes for safety
-        # unless explicitly unpicklable.
 
     def test_detects_thread_usage_in_source(self) -> None:
         """Should see 'threading.Lock' in source code."""
         analysis = FunctionAnalyzer.analyze(thread_user_task)
         assert analysis.uses_threads is True
-        # If it uses threads internally, it prefers processes (to get its own GIL)
+
         assert analysis.prefers_processes is True
 
     def test_detects_thread_usage_in_closure(self) -> None:

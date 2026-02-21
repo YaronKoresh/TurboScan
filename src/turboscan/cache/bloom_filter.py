@@ -27,7 +27,7 @@ class BloomFilter:
         return max(1, int(m / n * math.log(2)))
 
     def _hashes(self, item: str) -> List[int]:
-        # Use Blake2b for faster hashing (2-3x faster than MD5/SHA1)
+
         item_bytes = item.encode()
         h1 = int.from_bytes(
             hashlib.blake2b(item_bytes, digest_size=16).digest(), "big"
@@ -43,7 +43,7 @@ class BloomFilter:
             self.bits[pos // 8] |= 1 << pos % 8
 
     def __contains__(self, item: str) -> bool:
-        # Optimized to short-circuit on first miss
+
         return all(
             self.bits[pos // 8] & 1 << pos % 8 for pos in self._hashes(item)
         )

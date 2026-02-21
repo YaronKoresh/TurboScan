@@ -5,7 +5,6 @@ import pytest
 
 from turboscan import HyperBoost
 
-# Add src to path so tests can run without installing package
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src"))
 )
@@ -14,9 +13,9 @@ sys.path.insert(
 @pytest.fixture(autouse=True)
 def clean_hyperboost_state():
     """Reset HyperBoost state before each test."""
-    # Clear any active thread pools
+
     HyperBoost.shutdown()
-    # Reset internal counters if possible
+
     yield
     HyperBoost.shutdown()
 

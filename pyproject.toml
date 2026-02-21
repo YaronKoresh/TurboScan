@@ -7,6 +7,7 @@ name = "turboscan"
 version = "0.1.0"
 description = "TurboScan is a massively parallelized, GPU-accelerated, JIT-optimized execution framework that uses ALL available system resources for lightning-fast Python execution"
 readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
 requires-python = ">=3.8"
 authors = [
     {name = "Yaron Koresh"},
@@ -93,7 +94,7 @@ indent-style = "space"
 # Quality Assurance
 test = "pytest tests/"
 compile = { cmd = "python -m compileall -q ." }
-precommit = { cmd = "pre-commit run --all-files", env = { SKIP = "no-commit-to-branch" } }
+pre-commit = { cmd = "pre-commit run --all-files", env = { SKIP = "no-commit-to-branch" } }
 clean = { cmd = '''python -Bc "
 import pathlib, shutil;
 targets = {
@@ -113,7 +114,43 @@ for p in pathlib.Path('.').rglob('*'):
         elif p.name in targets['files'] or any(p.match(pat) for pat in targets['files']):
             if p.is_file(): p.unlink(missing_ok=True)
 "''' }
-check = ["clean", "compile", "precommit", "test", "clean"]
+strip-comments = { cmd = '''python -c "
+import tokenize
+import io
+import pathlib
+
+def strip_comments_and_format(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8', newline='') as f:
+            source = f.read()
+
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        result = []
+        last_lineno = -1
+        last_col = 0
+
+        for toktype, tokval, start, end, line in tokens:
+            if toktype == tokenize.COMMENT:
+                continue
+
+            if toktype == tokenize.NL or toktype == tokenize.NEWLINE:
+                pass
+
+            result.append((toktype, tokval, start, end, line))
+        cleaned = tokenize.untokenize(result)
+
+        with open(file_path, 'w', encoding='utf-8', newline='') as f:
+            f.write(cleaned)
+
+        print(f'Stripped and cleaned: {file_path}')
+
+    except Exception as e:
+        print(f'Failed to process {file_path}: {e}')
+
+for p in pathlib.Path('.').rglob('*.py'):
+    strip_comments_and_format(p)
+"''' }
+check = ["clean", "compile", "strip-comments", "pre-commit", "test", "clean"]
 
 # Build Pipeline
 build = { cmd = "python -m build" }

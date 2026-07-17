@@ -22,7 +22,7 @@ jobs:
           github.event_name == 'pull_request' &&
           github.event.action != 'closed'
         id: collect
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require("fs");
@@ -201,7 +201,7 @@ jobs:
           ADDITIONS: ${{ steps.collect.outputs.additions }}
           DELETIONS: ${{ steps.collect.outputs.deletions }}
           WINDOWS_COUNT: ${{ steps.collect.outputs.windows_count }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require("fs");
@@ -255,7 +255,7 @@ jobs:
         id: label-prompt
         env:
           AI_SUMMARY: ${{ steps.ai-compact.outputs.response }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require("fs");
@@ -377,7 +377,7 @@ jobs:
         env:
           AI_SUMMARY: ${{ steps.ai-compact.outputs.response }}
           AI_LABELS_RAW: ${{ steps.ai-labels.outputs.response }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;

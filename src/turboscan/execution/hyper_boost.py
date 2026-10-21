@@ -1117,6 +1117,10 @@ class HyperBoost:
                 todos = [(i, x) for i, x in enumerate(items)]
 
             if not todos:
+                if chunk_map is not None and len(items) > len(original_items):
+                    results = cls._reassemble_results(
+                        results, chunk_map, len(original_items), quiet
+                    )
                 return results
 
             progress = None

@@ -896,3 +896,25 @@ def test_cache_is_still_used_for_the_same_function() -> None:
 
     assert _CALLS == [7001]
     assert HYPER_CACHE.stats["hits"] >= 1
+
+
+def _double_chunked(x):
+    return x * 2
+
+
+def test_min_chunks_results_identical_when_served_from_cache() -> None:
+    """A fully cached run must reassemble chunks like the first run."""
+    np = pytest.importorskip("numpy")
+    data = [np.arange(24.0).reshape(4, 3, 2)]
+
+    first = HyperBoost.run(
+        _double_chunked, data, quiet=True, backend="threads", min_chunks=4
+    )
+    second = HyperBoost.run(
+        _double_chunked, data, quiet=True, backend="threads", min_chunks=4
+    )
+
+    assert len(first) == 1
+    assert len(second) == 1
+    assert np.array_equal(first[0], second[0])
+    assert np.array_equal(second[0], data[0] * 2)

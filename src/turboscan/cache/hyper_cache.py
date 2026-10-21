@@ -79,6 +79,7 @@ class HyperCache:
             return (False, None)
         with self._lock:
             if key in self.l1_cache:
+                self.l1_cache.move_to_end(key)
                 val = self.l1_cache[key]
                 self._hits += 1
                 return (True, val)

@@ -229,3 +229,14 @@ class TestHyperCache:
         found, val = cache.get("key0")
         assert found is True
         assert val == "val0"
+
+    def test_l1_hit_refreshes_recency(self, cache) -> None:
+        """A key that was just read must outlive keys that were not."""
+        cache.l1_max = 3
+        for k in ("a", "b", "c"):
+            cache.set(k, k)
+        assert cache.get("a") == (True, "a")
+        cache.set("d", "d")
+
+        assert "a" in cache.l1_cache
+        assert "b" not in cache.l1_cache

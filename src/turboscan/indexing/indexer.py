@@ -77,12 +77,47 @@ class HyperIndexer(ast.NodeVisitor):
                                 elt.value, str
                             ):
                                 self.mod_info.exports.add(elt.value)
-            elif isinstance(target, ast.Tuple):
-                for elt in target.elts:
-                    if isinstance(elt, ast.Name):
-                        self.mod_info.symbols[elt.id] = SymbolDef(
-                            elt.id, "var", self.mod_info.fqn
-                        )
+            else:
+                self._bind_target(target)
+        self.generic_visit(node)
+
+    def _bind_target(self, target) -> None:
+        """Record every name bound by an assignment-like target."""
+        if self._scope_depth > 0:
+            return
+        if isinstance(target, ast.Name):
+            self.mod_info.symbols.setdefault(
+                target.id, SymbolDef(target.id, "var", self.mod_info.fqn)
+            )
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                self._bind_target(elt)
+        elif isinstance(target, ast.Starred):
+            self._bind_target(target.value)
+
+    def visit_AugAssign(self, node) -> None:
+        self._bind_target(node.target)
+        self.generic_visit(node)
+
+    def visit_For(self, node) -> None:
+        self._bind_target(node.target)
+        self.generic_visit(node)
+
+    def visit_AsyncFor(self, node) -> None:
+        self.visit_For(node)
+
+    def visit_withitem(self, node) -> None:
+        if node.optional_vars is not None:
+            self._bind_target(node.optional_vars)
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node) -> None:
+        self._bind_target(node.target)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node) -> None:
+        if node.name:
+            self._bind_target(ast.Name(id=node.name, ctx=ast.Store()))
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node) -> None:

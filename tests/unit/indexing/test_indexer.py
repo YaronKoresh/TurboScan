@@ -166,3 +166,42 @@ if True:
 """
         self.index_code(code, mod_info)
         assert {"impl", "helper"} <= set(mod_info.symbols)
+
+
+class TestModuleLevelBindings:
+    def index(self, code):
+        info = ModuleInfo("test_mod", "test_mod.py", False)
+        HyperIndexer(info).visit(ast.parse(code))
+        return info
+
+    def test_nested_and_starred_targets(self) -> None:
+        info = self.index("a, (b, c) = 1, (2, 3)\nfirst, *rest = [1, 2]\n")
+        for name in ("a", "b", "c", "first", "rest"):
+            assert name in info.symbols
+
+    def test_loop_with_walrus_and_except_targets(self) -> None:
+        code = (
+            "for i in range(3): pass\n"
+            "with open('f') as fh: pass\n"
+            "if (w := 5): pass\n"
+            "try:\n    pass\nexcept Exception as err:\n    pass\n"
+        )
+        info = self.index(code)
+        for name in ("i", "fh", "w", "err"):
+            assert name in info.symbols
+
+    def test_augmented_assignment_target(self) -> None:
+        assert "total" in self.index("total += 1\n").symbols
+
+    def test_names_inside_functions_are_not_module_symbols(self) -> None:
+        code = (
+            "def f():\n    for i in range(3): pass\n"
+            "    with open('f') as fh: pass\n"
+        )
+        info = self.index(code)
+        assert "i" not in info.symbols
+        assert "fh" not in info.symbols
+
+    def test_bindings_do_not_replace_definitions(self) -> None:
+        info = self.index("def f(): pass\nfor f in range(2): pass\n")
+        assert info.symbols["f"].kind == "func"

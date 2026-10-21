@@ -240,6 +240,20 @@ class HyperValidator(ast.NodeVisitor):
             self.scope_stack[-1].defined_names.add(node.name)
         self.generic_visit(node)
 
+    def visit_MatchAs(self, node) -> None:
+        if node.name:
+            self.scope_stack[-1].defined_names.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node) -> None:
+        if node.name:
+            self.scope_stack[-1].defined_names.add(node.name)
+
+    def visit_MatchMapping(self, node) -> None:
+        if node.rest:
+            self.scope_stack[-1].defined_names.add(node.rest)
+        self.generic_visit(node)
+
     def visit_Global(self, node) -> None:
         for name in node.names:
             self.scope_stack[-1].defined_names.add(name)

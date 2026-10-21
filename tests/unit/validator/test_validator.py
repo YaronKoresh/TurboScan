@@ -377,6 +377,50 @@ def process(x):
         errors, _ = self.validate_code(validator, code)
         assert len(errors) == 0
 
+    def test_match_capture_names_are_defined(self, validator) -> None:
+        """Names bound by match patterns should count as defined."""
+
+        import sys
+
+        if sys.version_info < (3, 10):
+            pytest.skip("Match statements require Python 3.10+")
+
+        code = """
+def process(command):
+    match command:
+        case [first, *others]:
+            return first, others
+        case {"key": value, **rest}:
+            return value, rest
+        case str() as text:
+            return text
+        case Point(x=px):
+            return px
+        case _:
+            return None
+        """
+        errors, _ = self.validate_code(validator, code)
+        assert [e for e in errors if "is not defined" in e[1]] == [
+            (10, "Name 'Point' is not defined")
+        ]
+
+    def test_match_case_body_still_reports_unknown_names(
+        self, validator
+    ) -> None:
+        import sys
+
+        if sys.version_info < (3, 10):
+            pytest.skip("Match statements require Python 3.10+")
+
+        code = """
+def process(command):
+    match command:
+        case [first]:
+            return missing
+        """
+        errors, _ = self.validate_code(validator, code)
+        assert errors == [(5, "Name 'missing' is not defined")]
+
     def test_async_function(self, validator) -> None:
         """Async function should work like regular function."""
         code = """

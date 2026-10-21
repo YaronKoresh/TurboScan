@@ -240,3 +240,19 @@ class TestHyperCache:
 
         assert "a" in cache.l1_cache
         assert "b" not in cache.l1_cache
+
+    def test_l2_read_error_is_a_miss(self, cache) -> None:
+        """An entry that vanishes or fails to load in L2 must count as a miss."""
+
+        class FlakyL2(dict):
+            def __getitem__(self, key):
+                raise KeyError(key)
+
+        l2 = FlakyL2()
+        dict.__setitem__(l2, "k", 1)
+        cache._l2_initialized = True
+        cache._l2_cache = l2
+        cache.bloom.add("k")
+
+        assert cache.get("k") == (False, None)
+        assert cache.stats["misses"] >= 1

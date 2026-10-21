@@ -85,12 +85,18 @@ class HyperCache:
                 return (True, val)
 
         l2 = self.l2_cache
-        if l2 is not None and key in l2:
-            val = l2[key]
-            with self._lock:
-                self._promote_to_l1(key, val)
-                self._hits += 1
-            return (True, val)
+        if l2 is not None:
+            try:
+                found = key in l2
+                val = l2[key] if found else None
+            except Exception:
+                found = False
+                val = None
+            if found:
+                with self._lock:
+                    self._promote_to_l1(key, val)
+                    self._hits += 1
+                return (True, val)
 
         with self._lock:
             self._misses += 1

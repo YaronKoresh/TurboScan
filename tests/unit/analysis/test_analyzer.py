@@ -29,6 +29,21 @@ def io_bound_task(path):
         return f.read()
 
 
+def make_threaded_func():
+    def threaded(x):
+        worker = threading.Thread(target=print)
+        return (worker, x)
+
+    return threaded
+
+
+def make_plain_func():
+    def plain(x):
+        return x + 1
+
+    return plain
+
+
 def make_closure_with_lock():
     lock = threading.Lock()
 
@@ -90,3 +105,23 @@ class TestFunctionAnalyzer:
         analysis = FunctionAnalyzer.analyze(sum)
         assert analysis.estimated_weight == "unknown"
         assert analysis.is_picklable is True
+
+    def test_new_function_does_not_inherit_analysis_of_deleted_function(
+        self,
+    ) -> None:
+        """A recycled id() must not return another function's analysis."""
+        for _ in range(50):
+            threaded = make_threaded_func()
+            assert FunctionAnalyzer.analyze(threaded).uses_threads is True
+            del threaded
+
+            plain = make_plain_func()
+            assert FunctionAnalyzer.analyze(plain).uses_threads is False
+            del plain
+
+    def test_cache_does_not_keep_functions_alive(self) -> None:
+        func = make_plain_func()
+        FunctionAnalyzer.analyze(func)
+        before = len(FunctionAnalyzer._analysis_cache)
+        del func
+        assert len(FunctionAnalyzer._analysis_cache) == before - 1

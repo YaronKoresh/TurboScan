@@ -4,7 +4,8 @@ import contextlib
 import inspect
 import os
 import pickle
-from typing import Callable, Dict, Optional, Tuple
+import weakref
+from typing import Any, Callable, Dict, Optional, Tuple
 
 try:
     import cloudpickle
@@ -129,14 +130,40 @@ class FunctionAnalyzer:
             "yaml.load",
         }
     )
-    _analysis_cache: Dict[int, FunctionAnalysis] = {}
-    _source_cache: Dict[int, str] = {}
+    _analysis_cache: Dict[int, Tuple[Any, FunctionAnalysis]] = {}
+    _source_cache: Dict[int, Tuple[Any, Optional[str]]] = {}
+
+    @staticmethod
+    def _cache_lookup(
+        cache: Dict[int, Tuple[Any, Any]], func: Callable
+    ) -> Tuple[bool, Any]:
+        entry = cache.get(id(func))
+        if entry is not None and entry[0]() is func:
+            return (True, entry[1])
+        return (False, None)
+
+    @staticmethod
+    def _cache_store(
+        cache: Dict[int, Tuple[Any, Any]], func: Callable, value: Any
+    ) -> None:
+        func_id = id(func)
+
+        def evict(ref: Any) -> None:
+            entry = cache.get(func_id)
+            if entry is not None and entry[0] is ref:
+                del cache[func_id]
+
+        try:
+            cache[func_id] = (weakref.ref(func, evict), value)
+        except TypeError:
+            cache.pop(func_id, None)
 
     @classmethod
     def analyze(cls, func: Callable) -> FunctionAnalysis:
         func_id = id(func)
-        if func_id in cls._analysis_cache:
-            return cls._analysis_cache[func_id]
+        found, cached = cls._cache_lookup(cls._analysis_cache, func)
+        if found:
+            return cached
         analysis = FunctionAnalysis()
         analysis.__turbo_id__ = f"analysis:{func_id}"
         func_name = getattr(func, "__name__", "")
@@ -224,21 +251,21 @@ class FunctionAnalyzer:
             except Exception:
                 pass
         analysis.is_picklable, analysis.failure_reason = cls._test_pickle(func)
-        cls._analysis_cache[func_id] = analysis
+        cls._cache_store(cls._analysis_cache, func, analysis)
         return analysis
 
     @classmethod
     def _get_source(cls, func: Callable) -> Optional[str]:
-        func_id = id(func)
-        if func_id in cls._source_cache:
-            return cls._source_cache[func_id]
+        found, cached = cls._cache_lookup(cls._source_cache, func)
+        if found:
+            return cached
         source = None
         with contextlib.suppress(TypeError, OSError):
             source = inspect.getsource(func)
         if source is None and hasattr(func, "__self__"):
             with contextlib.suppress(TypeError, OSError):
                 source = inspect.getsource(type(func.__self__))
-        cls._source_cache[func_id] = source
+        cls._cache_store(cls._source_cache, func, source)
         return source
 
     @classmethod

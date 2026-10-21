@@ -315,19 +315,33 @@ def _clean_for_pickle(obj: Any, seen: Optional[Set[int]] = None) -> Any:
 def _offload_large_result(data: Any, serializer) -> str:
     """
     Save large data to a temporary file and return the path.
+    The file is removed if the data cannot be written.
     """
     fd, path = tempfile.mkstemp(prefix="turbo_ipc_", suffix=".bin")
     try:
-        with os.fdopen(fd, "wb") as f:
+        handle = os.fdopen(fd, "wb")
+    except BaseException:
+        _remove_quietly(fd=fd, path=path)
+        raise
+    try:
+        with handle as f:
             serializer.dump(data, f)
         return path
-    except Exception:
+    except BaseException:
+        _remove_quietly(path=path)
+        raise
+
+
+def _remove_quietly(path: str, fd: Optional[int] = None) -> None:
+    if fd is not None:
         try:
             os.close(fd)
-            os.remove(path)
         except OSError:
             pass
-        raise
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def _hyperboost_cloudpickle_worker(serialized_work: bytes) -> bytes:

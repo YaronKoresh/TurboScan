@@ -49,19 +49,17 @@ class FastFileReader:
         return results
 
     async def read_files_async(self, paths: List[Path]) -> Dict[Path, str]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         async def read_one(path: Path) -> Tuple[Path, str]:
-            content = await loop.run_in_executor(None, self.read_file, path)
+            try:
+                content = await loop.run_in_executor(None, self.read_file, path)
+            except Exception:
+                content = ""
             return (path, content)
 
-        tasks = [read_one(p) for p in paths]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return {
-            path: content
-            for path, content in results
-            if isinstance(content, str) or isinstance(path, Path)
-        }
+        results = await asyncio.gather(*(read_one(p) for p in paths))
+        return dict(results)
 
 
 FAST_READER = FastFileReader()

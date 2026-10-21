@@ -67,3 +67,21 @@ class TestFastFileReader:
 
         results = await reader.read_files_async([p])
         assert results[p] == "async_data"
+
+    def test_read_files_async_survives_a_failing_read(
+        self, reader, tmp_path, monkeypatch
+    ) -> None:
+        """One failing read must give "" for that path, not crash the batch."""
+        import asyncio
+
+        good = tmp_path / "a"
+        bad = tmp_path / "b"
+
+        def fake_read(path):
+            if path == bad:
+                raise OSError("boom")
+            return "ok"
+
+        monkeypatch.setattr(reader, "read_file", fake_read)
+        results = asyncio.run(reader.read_files_async([good, bad]))
+        assert results == {good: "ok", bad: ""}

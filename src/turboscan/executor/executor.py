@@ -194,16 +194,19 @@ class HyperExecutor:
         sys.path.insert(0, str(self.script_path.parent))
         global_env = self._prepare_globals()
         start_time = time.perf_counter()
+        exit_code = 0
         try:
             exec(compiled_code, global_env)
         except KeyboardInterrupt:
             print("\n\nExecution interrupted.")
-        except SystemExit:
-            pass
+            exit_code = 130
+        except SystemExit as e:
+            exit_code = self._exit_code(e.code)
         except Exception:
             import traceback
 
             traceback.print_exc()
+            exit_code = 1
         elapsed = time.perf_counter() - start_time
         print("=" * 60)
         print(f"\n✅ Execution completed in {elapsed:.3f}s")
@@ -212,3 +215,14 @@ class HyperExecutor:
             print(
                 f"   Cache: {cache_stats['hit_rate']:.1%} hit rate ({cache_stats['hits']} hits, {cache_stats['misses']} misses)"
             )
+        if exit_code:
+            sys.exit(exit_code)
+
+    @staticmethod
+    def _exit_code(code: Any) -> int:
+        if code is None:
+            return 0
+        if isinstance(code, int):
+            return code
+        print(code, file=sys.stderr)
+        return 1

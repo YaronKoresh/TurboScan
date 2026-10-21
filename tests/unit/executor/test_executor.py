@@ -53,3 +53,44 @@ class TestHyperExecutor:
                 executor.execute()
 
             assert excinfo.value.code == 1
+
+
+class TestScriptExitCode:
+    def _run(self, tmp_path, source):
+        script_file = tmp_path / "script.py"
+        script_file.write_text(source, encoding="utf-8")
+        executor = HyperExecutor(
+            str(script_file), audit_first=False, optimize=False
+        )
+        executor.execute()
+
+    def test_success_does_not_exit(self, tmp_path) -> None:
+        self._run(tmp_path, "x = 1")
+
+    def test_sys_exit_zero_and_none_do_not_fail(self, tmp_path) -> None:
+        self._run(tmp_path, "import sys\nsys.exit(0)")
+        self._run(tmp_path, "import sys\nsys.exit()")
+
+    def test_sys_exit_code_is_propagated(self, tmp_path) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._run(tmp_path, "import sys\nsys.exit(3)")
+        assert excinfo.value.code == 3
+
+    def test_sys_exit_message_prints_and_exits_one(
+        self, tmp_path, capsys
+    ) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._run(tmp_path, "import sys\nsys.exit('bad input')")
+        assert excinfo.value.code == 1
+        assert "bad input" in capsys.readouterr().err
+
+    def test_unhandled_exception_exits_one(self, tmp_path, capsys) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._run(tmp_path, "raise RuntimeError('boom')")
+        assert excinfo.value.code == 1
+        assert "boom" in capsys.readouterr().err
+
+    def test_keyboard_interrupt_exits_130(self, tmp_path) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._run(tmp_path, "raise KeyboardInterrupt")
+        assert excinfo.value.code == 130

@@ -6,6 +6,20 @@ from turboscan.indexing.types import ModuleInfo, Signature, SymbolDef
 class HyperIndexer(ast.NodeVisitor):
     def __init__(self, mod_info: ModuleInfo) -> None:
         self.mod_info = mod_info
+        self._scope_depth = 0
+
+    def _visit_scope(self, node) -> None:
+        self._scope_depth += 1
+        try:
+            self.generic_visit(node)
+        finally:
+            self._scope_depth -= 1
+
+    def visit_Global(self, node) -> None:
+        for name in node.names:
+            self.mod_info.symbols.setdefault(
+                name, SymbolDef(name, "var", self.mod_info.fqn)
+            )
 
     def _get_sig(self, node) -> Signature:
         pos_names = [a.arg for a in node.args.args]
@@ -24,24 +38,32 @@ class HyperIndexer(ast.NodeVisitor):
         )
 
     def visit_FunctionDef(self, node) -> None:
-        if node.name == "__getattr__":
-            self.mod_info.has_getattr = True
-        sig = self._get_sig(node)
-        self.mod_info.symbols[node.name] = SymbolDef(
-            node.name, "func", self.mod_info.fqn, sig
-        )
-        self.generic_visit(node)
+        if self._scope_depth == 0:
+            if node.name == "__getattr__":
+                self.mod_info.has_getattr = True
+            sig = self._get_sig(node)
+            self.mod_info.symbols[node.name] = SymbolDef(
+                node.name, "func", self.mod_info.fqn, sig
+            )
+        self._visit_scope(node)
 
     def visit_AsyncFunctionDef(self, node) -> None:
         self.visit_FunctionDef(node)
 
     def visit_ClassDef(self, node) -> None:
-        self.mod_info.symbols[node.name] = SymbolDef(
-            node.name, "class", self.mod_info.fqn
-        )
-        self.generic_visit(node)
+        if self._scope_depth == 0:
+            self.mod_info.symbols[node.name] = SymbolDef(
+                node.name, "class", self.mod_info.fqn
+            )
+        self._visit_scope(node)
+
+    def visit_Lambda(self, node) -> None:
+        self._visit_scope(node)
 
     def visit_Assign(self, node) -> None:
+        if self._scope_depth > 0:
+            self.generic_visit(node)
+            return
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self.mod_info.symbols[target.id] = SymbolDef(
@@ -64,13 +86,15 @@ class HyperIndexer(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node) -> None:
-        if isinstance(node.target, ast.Name):
+        if self._scope_depth == 0 and isinstance(node.target, ast.Name):
             self.mod_info.symbols[node.target.id] = SymbolDef(
                 node.target.id, "var", self.mod_info.fqn
             )
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node) -> None:
+        if self._scope_depth > 0:
+            return
         mod_name = node.module
         level = node.level
         for alias in node.names:
@@ -84,6 +108,8 @@ class HyperIndexer(ast.NodeVisitor):
                 )
 
     def visit_Import(self, node) -> None:
+        if self._scope_depth > 0:
+            return
         for alias in node.names:
             asname = alias.asname or alias.name.split(".")[0]
             self.mod_info.imports[asname] = (alias.name, 0, None)

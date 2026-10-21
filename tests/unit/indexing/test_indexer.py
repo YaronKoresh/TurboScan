@@ -86,3 +86,83 @@ from ..parent import *
 
         assert len(mod_info.star_imports) == 1
         assert mod_info.star_imports[0] == ("parent", 2)
+
+
+class TestHyperIndexerScopes:
+    @pytest.fixture
+    def mod_info(self):
+        return ModuleInfo("test_mod", "test_mod.py", False)
+
+    def index_code(self, code, info):
+        HyperIndexer(info).visit(ast.parse(code))
+        return info
+
+    def test_methods_are_not_module_symbols(self, mod_info) -> None:
+        code = """
+class Box:
+    size = 3
+
+    def method(self):
+        return 1
+"""
+        self.index_code(code, mod_info)
+        assert "Box" in mod_info.symbols
+        assert "method" not in mod_info.symbols
+        assert "size" not in mod_info.symbols
+
+    def test_function_locals_are_not_module_symbols(self, mod_info) -> None:
+        code = """
+import os
+
+
+def work():
+    import json
+    from re import match
+    local = 1
+    typed: int = 2
+
+    def inner():
+        pass
+
+    class Local:
+        pass
+
+    return local
+"""
+        self.index_code(code, mod_info)
+        assert set(mod_info.symbols) == {"os", "work"}
+        assert set(mod_info.imports) == {"os"}
+
+    def test_nested_getattr_is_not_a_module_hook(self, mod_info) -> None:
+        code = """
+class Proxy:
+    def __getattr__(self, name):
+        return name
+"""
+        self.index_code(code, mod_info)
+        assert mod_info.has_getattr is False
+
+    def test_global_declaration_defines_a_module_symbol(self, mod_info) -> None:
+        code = """
+def setup():
+    global CONFIG
+    CONFIG = {}
+"""
+        self.index_code(code, mod_info)
+        assert mod_info.symbols["CONFIG"].kind == "var"
+
+    def test_definitions_inside_module_level_blocks_are_kept(
+        self, mod_info
+    ) -> None:
+        code = """
+try:
+    import fast as impl
+except ImportError:
+    impl = None
+
+if True:
+    def helper():
+        pass
+"""
+        self.index_code(code, mod_info)
+        assert {"impl", "helper"} <= set(mod_info.symbols)

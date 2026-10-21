@@ -84,3 +84,45 @@ class TestHyperAuditor:
         error_count, _warn_count = auditor.run()
 
         assert error_count == 1
+
+
+class TestAuditorScopes:
+    def _audit(self, tmp_path, files, capsys):
+        for name, text in files.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        auditor = HyperAuditor(tmp_path, excludes=set(), check_unused=False)
+        errors, _ = auditor.run()
+        return errors, capsys.readouterr().out
+
+    def test_method_name_cannot_be_imported(self, tmp_path, capsys) -> None:
+        errors, out = self._audit(
+            tmp_path,
+            {
+                "a.py": "class C:\n    def method(self):\n        pass\n",
+                "b.py": "from a import C, method\n",
+            },
+            capsys,
+        )
+        assert errors == 1
+        assert "Cannot import 'method' from 'a'" in out
+
+    def test_local_name_of_another_function_is_undefined(
+        self, tmp_path, capsys
+    ) -> None:
+        source = (
+            "def bad():\n    return hidden\n\n\n"
+            "def other():\n    hidden = 1\n    return hidden\n"
+        )
+        errors, out = self._audit(tmp_path, {"m.py": source}, capsys)
+        assert errors == 1
+        assert "Name 'hidden' is not defined" in out
+
+    def test_global_assigned_in_function_is_defined(
+        self, tmp_path, capsys
+    ) -> None:
+        source = (
+            "def setup():\n    global CONFIG\n    CONFIG = {}\n\n\n"
+            "def use():\n    return CONFIG\n"
+        )
+        errors, _ = self._audit(tmp_path, {"m.py": source}, capsys)
+        assert errors == 0

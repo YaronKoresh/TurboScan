@@ -127,6 +127,15 @@ class HyperExecutor:
         if not self.script_path.exists():
             print(f"Error: File '{self.script_path}' not found.")
             sys.exit(1)
+        if not self.script_path.is_file():
+            print(f"Error: '{self.script_path}' is not a file.")
+            sys.exit(1)
+        try:
+            with open(self.script_path, "rb"):
+                pass
+        except OSError as e:
+            print(f"Error: Cannot read '{self.script_path}': {e.strerror or e}")
+            sys.exit(1)
         if RICH_AVAIL:
             serializer = "cloudpickle" if CLOUDPICKLE_AVAIL else "pickle"
             console.print(

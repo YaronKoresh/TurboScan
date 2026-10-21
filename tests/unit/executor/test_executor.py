@@ -94,3 +94,29 @@ class TestScriptExitCode:
         with pytest.raises(SystemExit) as excinfo:
             self._run(tmp_path, "raise KeyboardInterrupt")
         assert excinfo.value.code == 130
+
+
+class TestScriptPathChecks:
+    def test_directory_is_rejected(self, tmp_path, capsys) -> None:
+        with patch("turboscan.executor.executor.RICH_AVAIL", False):
+            executor = HyperExecutor(str(tmp_path), audit_first=False)
+            with pytest.raises(SystemExit) as excinfo:
+                executor.execute()
+        assert excinfo.value.code == 1
+        assert "is not a file" in capsys.readouterr().out
+
+    def test_unreadable_file_is_rejected(self, tmp_path, capsys) -> None:
+        script_file = tmp_path / "script.py"
+        script_file.write_text("print('hello')", encoding="utf-8")
+        with patch("turboscan.executor.executor.RICH_AVAIL", False), patch(
+            "turboscan.executor.executor.open",
+            side_effect=PermissionError(13, "Permission denied"),
+            create=True,
+        ):
+            executor = HyperExecutor(str(script_file), audit_first=False)
+            with pytest.raises(SystemExit) as excinfo:
+                executor.execute()
+        assert excinfo.value.code == 1
+        out = capsys.readouterr().out
+        assert "Cannot read" in out
+        assert "Permission denied" in out

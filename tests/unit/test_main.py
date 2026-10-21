@@ -82,6 +82,24 @@ class TestTurboScanMain:
 
         assert exc.value.code == 0
 
+    def test_audit_root_that_is_not_a_directory_is_rejected(
+        self, mock_deps, tmp_path, capsys
+    ) -> None:
+        _, mock_audit_cls, _, _, _ = mock_deps
+        missing = tmp_path / "missing"
+        a_file = tmp_path / "file.py"
+        a_file.write_text("x = 1", encoding="utf-8")
+
+        for target in (missing, a_file):
+            with patch.object(
+                sys, "argv", ["turboscan", "audit", str(target)]
+            ), pytest.raises(SystemExit) as exc:
+                main()
+            assert exc.value.code == 2
+            assert "is not a directory" in capsys.readouterr().err
+
+        mock_audit_cls.assert_not_called()
+
     def test_audit_command_failure(self, mock_deps) -> None:
         """Test 'audit' command when errors are found."""
         _, mock_audit_cls, _, _, _ = mock_deps

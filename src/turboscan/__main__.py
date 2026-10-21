@@ -112,6 +112,8 @@ def main() -> None:
         return
     elif args.command == "audit":
         root_path = Path(args.root).resolve()
+        if not root_path.is_dir():
+            parser.error(f"audit root '{args.root}' is not a directory")
         auditor = HyperAuditor(
             root_path, set(args.exclude), check_unused=not args.no_unused
         )

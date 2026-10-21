@@ -105,6 +105,23 @@ def _safe_make_cache_key(func_name: str, item: Any) -> Optional[str]:
         return None
 
 
+def _discard_offloaded_files(raw_results: List[Any], decode: Callable) -> None:
+    """Delete the temp files of offloaded results that were not consumed."""
+    for raw in raw_results:
+        if raw is None:
+            continue
+        try:
+            result = decode(raw)
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and result[0] == "offloaded"
+            ):
+                os.remove(result[1])
+        except Exception:
+            pass
+
+
 class HyperBoost:
     _active_threads: Set[int] = set()
     _lock = threading.RLock()
@@ -633,6 +650,10 @@ class HyperBoost:
         max_workers = max(HARDWARE.cpu_count, HARDWARE.cpu_count_physical * 2)
         last_error = None
         use_loky_native = LOKY_AVAIL and use_cloudpickle_worker
+        pending_raw: List[Any] = []
+        decode_raw = (
+            serializer.loads if use_cloudpickle_worker else (lambda raw: raw)
+        )
 
         def prepare_item(item):
             cls._deep_patch_for_serialization(item)
@@ -683,6 +704,7 @@ class HyperBoost:
                         for i, item in enumerate(work_items)
                     }
                     completed = [None] * len(work_items)
+                    pending_raw = completed
 
                     for future in as_completed(future_to_idx):
                         fut_idx = future_to_idx[future]
@@ -774,6 +796,7 @@ class HyperBoost:
                             for i, item in enumerate(work_items)
                         }
                         completed = [None] * len(work_items)
+                        pending_raw = completed
 
                         for future in as_completed(future_to_idx):
                             fut_idx = future_to_idx[future]
@@ -849,6 +872,7 @@ class HyperBoost:
                         return (True, None)
 
             except cls.TRANSIENT_ERRORS as e:
+                _discard_offloaded_files(pending_raw, decode_raw)
                 last_error = e
                 traceback.format_exc()
                 if cls.DEBUG:
@@ -861,6 +885,7 @@ class HyperBoost:
                 break
 
             except Exception as e:
+                _discard_offloaded_files(pending_raw, decode_raw)
                 last_error = e
                 traceback.format_exc()
                 if cls.DEBUG:

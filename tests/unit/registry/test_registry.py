@@ -241,3 +241,18 @@ class TestHyperRegistry:
             registry.modules = {"pkg": MockInfo(), "pkg.sub": MockInfo()}
 
             registry.second_pass_star_imports()
+
+
+def test_exclude_applies_below_root_only(tmp_path) -> None:
+    """A root that lives inside a dir named like an exclude is still scanned."""
+    root = tmp_path / "build" / "proj"
+    (root / "dist").mkdir(parents=True)
+    (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (root / "dist" / "b.py").write_text("y = 2\n", encoding="utf-8")
+
+    registry = HyperRegistry(root, excludes={"build", "dist"})
+    registry.scan()
+
+    assert "a" in registry.modules
+    assert "dist.b" not in registry.modules
+    assert root / "dist" not in registry.package_dirs

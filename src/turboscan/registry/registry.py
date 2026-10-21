@@ -18,6 +18,13 @@ class HyperRegistry:
         self.src_prefix: Optional[str] = None
         self._file_contents: Dict[Path, str] = {}
 
+    def _is_excluded(self, path: Path) -> bool:
+        try:
+            parts = path.relative_to(self.root).parts
+        except ValueError:
+            return True
+        return any(excl in parts for excl in self.excludes)
+
     def scan(self) -> None:
         for candidate in ["src", "lib", "app"]:
             if (self.root / candidate).is_dir():
@@ -25,7 +32,7 @@ class HyperRegistry:
                 break
         all_files = []
         for path in self.root.rglob("*.py"):
-            if any(excl in path.parts for excl in self.excludes):
+            if self._is_excluded(path):
                 continue
             try:
                 path.relative_to(self.root)
@@ -71,7 +78,7 @@ class HyperRegistry:
         for path in self.root.rglob("*"):
             if not path.is_dir():
                 continue
-            if any(excl in path.parts for excl in self.excludes):
+            if self._is_excluded(path):
                 continue
             has_py = any(
                 f.suffix == ".py" for f in path.iterdir() if f.is_file()

@@ -918,3 +918,34 @@ def test_min_chunks_results_identical_when_served_from_cache() -> None:
     assert len(second) == 1
     assert np.array_equal(first[0], second[0])
     assert np.array_equal(second[0], data[0] * 2)
+
+
+def _stage_one_records_thread(x):
+    import threading
+
+    _STAGE_THREADS.add(threading.get_ident())
+    return x + 1
+
+
+def _stage_two_double(x):
+    return x * 2
+
+
+_STAGE_THREADS: set = set()
+
+
+def test_task_pipeline_runs_stages_in_the_worker_pool() -> None:
+    """Each stage of a task list must be dispatched, not run on the caller."""
+    import threading
+
+    _STAGE_THREADS.clear()
+    results = HyperBoost.run(
+        [_stage_one_records_thread, _stage_two_double],
+        list(range(8)),
+        quiet=True,
+        backend="threads",
+        use_cache=False,
+    )
+
+    assert results == [(i + 1) * 2 for i in range(8)]
+    assert threading.get_ident() not in _STAGE_THREADS

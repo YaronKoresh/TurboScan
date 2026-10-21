@@ -1020,23 +1020,23 @@ class HyperBoost:
                 return current
             return [task(x) for x in items]
 
+        if isinstance(task, list):
+            current_data = items
+            for func in task:
+                current_data = cls.run(
+                    func,
+                    current_data,
+                    quiet=quiet,
+                    backend=backend,
+                    use_cache=use_cache,
+                    force_processes=force_processes,
+                )
+            return current_data
+
         with cls._lock:
             cls._active_threads.add(thread_id)
 
         try:
-            if isinstance(task, list):
-                current_data = items
-                for func in task:
-                    current_data = cls.run(
-                        func,
-                        current_data,
-                        quiet=quiet,
-                        backend=backend,
-                        use_cache=use_cache,
-                        force_processes=force_processes,
-                    )
-                return current_data
-
             cls._init_thread_pool()
             cls._init_gpu_queue()
 

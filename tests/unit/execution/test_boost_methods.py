@@ -850,3 +850,49 @@ def test_actual_parallelism() -> None:
 
     assert elapsed < 0.35
     assert results == [2, 4, 6, 8]
+
+
+def test_cache_is_not_shared_between_different_lambdas() -> None:
+    first = HyperBoost.run(lambda x: x + 1, [1, 2, 3], quiet=True)
+    second = HyperBoost.run(lambda x: x * 10, [1, 2, 3], quiet=True)
+
+    assert first == [2, 3, 4]
+    assert second == [10, 20, 30]
+
+
+def test_cache_is_not_shared_between_different_closures() -> None:
+    def make(n):
+        def scale(x):
+            return x * n
+
+        return scale
+
+    assert HyperBoost.run(make(2), [1, 2, 3], quiet=True) == [2, 4, 6]
+    assert HyperBoost.run(make(3), [1, 2, 3], quiet=True) == [3, 6, 9]
+
+
+def test_map_does_not_share_cache_between_different_functions() -> None:
+    first = HyperBoost.map(lambda a: a + 1, [1, 2, 3], quiet=True)
+    second = HyperBoost.map(lambda a: a * 100, [1, 2, 3], quiet=True)
+
+    assert first == [2, 3, 4]
+    assert second == [100, 200, 300]
+
+
+_CALLS: list = []
+
+
+def _tracked(x):
+    _CALLS.append(x)
+    return x + 1000
+
+
+def test_cache_is_still_used_for_the_same_function() -> None:
+    from turboscan.cache.hyper_cache import HYPER_CACHE
+
+    _CALLS.clear()
+    HyperBoost.run(_tracked, [7001], quiet=True, backend="threads")
+    HyperBoost.run(_tracked, [7001], quiet=True, backend="threads")
+
+    assert _CALLS == [7001]
+    assert HYPER_CACHE.stats["hits"] >= 1

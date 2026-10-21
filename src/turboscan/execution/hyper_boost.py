@@ -6,7 +6,10 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
+import functools
 import gc
+import hashlib
+import inspect
 import multiprocessing as mp
 import pickle
 import platform
@@ -15,6 +18,7 @@ import sys
 import threading
 import time
 import traceback
+import types
 from concurrent.futures import (
     ProcessPoolExecutor,
     ThreadPoolExecutor,
@@ -90,6 +94,75 @@ from turboscan.gpu.accelerator import GPU_ACCELERATOR
 from turboscan.hardware.config import HARDWARE
 
 _TURBOSCAN_MAIN_PROCESS = True
+
+
+def _update_digest(digest: Any, value: Any, depth: int) -> None:
+    """Feed a stable description of a function or value into a hash."""
+    if depth > 8:
+        raise ValueError("value is nested too deeply")
+    if isinstance(value, types.CodeType):
+        digest.update(b"code")
+        digest.update(value.co_code)
+        for part in (value.co_names, value.co_varnames, value.co_freevars):
+            digest.update(repr(part).encode())
+        for const in value.co_consts:
+            _update_digest(digest, const, depth + 1)
+    elif isinstance(value, functools.partial):
+        digest.update(b"partial")
+        _update_digest(digest, value.func, depth + 1)
+        _update_digest(digest, value.args, depth + 1)
+        _update_digest(digest, value.keywords, depth + 1)
+    elif inspect.ismethod(value):
+        digest.update(b"method")
+        _update_digest(digest, value.__func__, depth + 1)
+        _update_digest(digest, value.__self__, depth + 1)
+    elif isinstance(value, types.FunctionType):
+        digest.update(b"function")
+        digest.update(f"{value.__module__}.{value.__qualname__}".encode())
+        _update_digest(digest, value.__code__, depth + 1)
+        _update_digest(digest, value.__defaults__, depth + 1)
+        _update_digest(digest, value.__kwdefaults__, depth + 1)
+        cells = value.__closure__ or ()
+        digest.update(str(len(cells)).encode())
+        for cell in cells:
+            _update_digest(digest, cell.cell_contents, depth + 1)
+    elif isinstance(value, types.BuiltinFunctionType):
+        owner = value.__self__
+        if owner is not None and not isinstance(owner, types.ModuleType):
+            raise ValueError("bound builtin methods cannot be identified")
+        digest.update(b"builtin")
+        digest.update(f"{value.__module__}.{value.__qualname__}".encode())
+    elif isinstance(value, (tuple, list)):
+        digest.update(type(value).__name__.encode())
+        digest.update(str(len(value)).encode())
+        for entry in value:
+            _update_digest(digest, entry, depth + 1)
+    elif isinstance(value, dict):
+        digest.update(b"dict")
+        digest.update(str(len(value)).encode())
+        for key, entry in value.items():
+            _update_digest(digest, key, depth + 1)
+            _update_digest(digest, entry, depth + 1)
+    else:
+        digest.update(b"value")
+        digest.update(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+
+
+def _function_cache_name(func: Callable) -> Optional[str]:
+    """
+    Build a cache namespace that identifies a callable by what it does,
+    not only by its name. Returns None when the callable cannot be
+    identified reliably, in which case results must not be cached.
+    """
+    try:
+        digest = hashlib.blake2b(digest_size=16)
+        _update_digest(digest, func, 0)
+        name = getattr(func, "__qualname__", None) or getattr(
+            func, "__name__", "task"
+        )
+        return f"{name}:{digest.hexdigest()}"
+    except Exception:
+        return None
 
 
 def _safe_make_cache_key(func_name: str, item: Any) -> Optional[str]:
@@ -537,11 +610,15 @@ class HyperBoost:
         task_id,
         quiet: bool,
         analysis: FunctionAnalysis,
+        cache_name: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """Execute tasks using multiprocessing with comprehensive serialization handling."""
 
         if not todos:
             return (True, None)
+
+        if cache_name is None:
+            cache_name = func_name
 
         cls._ensure_main_module_patched()
 
@@ -736,7 +813,7 @@ class HyperBoost:
 
                                     if use_cache:
                                         key = _safe_make_cache_key(
-                                            func_name, items[idx]
+                                            cache_name, items[idx]
                                         )
                                         if key is not None:
                                             HYPER_CACHE.set(key, actual_result)
@@ -750,7 +827,7 @@ class HyperBoost:
                                 results[idx] = data
                                 if use_cache:
                                     key = _safe_make_cache_key(
-                                        func_name, items[idx]
+                                        cache_name, items[idx]
                                     )
                                     if key is not None:
                                         HYPER_CACHE.set(key, data)
@@ -834,7 +911,7 @@ class HyperBoost:
 
                                         if use_cache:
                                             key = _safe_make_cache_key(
-                                                func_name, items[idx]
+                                                cache_name, items[idx]
                                             )
                                             if key is not None:
                                                 HYPER_CACHE.set(
@@ -850,7 +927,7 @@ class HyperBoost:
                                     results[idx] = data
                                     if use_cache:
                                         key = _safe_make_cache_key(
-                                            func_name, items[idx]
+                                            cache_name, items[idx]
                                         )
                                         if key is not None:
                                             HYPER_CACHE.set(key, data)
@@ -965,6 +1042,9 @@ class HyperBoost:
 
             func = task
             func_name = getattr(func, "__name__", "task")
+            cache_name = _function_cache_name(func) if use_cache else None
+            if cache_name is None:
+                use_cache = False
             HARDWARE.cpu_count * 4
             batch_size = cls.BATCH_SIZE
 
@@ -1022,7 +1102,7 @@ class HyperBoost:
             if use_cache:
                 for i, item in enumerate(items):
                     try:
-                        key = _safe_make_cache_key(func_name, item)
+                        key = _safe_make_cache_key(cache_name, item)
                         if key is not None:
                             found, cached = HYPER_CACHE.get(key)
                             if found:
@@ -1130,7 +1210,7 @@ class HyperBoost:
                         idx = todos[i][0]
                         results[idx] = result
                         if use_cache:
-                            key = _safe_make_cache_key(func_name, items[idx])
+                            key = _safe_make_cache_key(cache_name, items[idx])
                             if key is not None:
                                 HYPER_CACHE.set(key, result)
                         if progress:
@@ -1160,7 +1240,7 @@ class HyperBoost:
                                     results[idx] = result
                                     if use_cache:
                                         key = _safe_make_cache_key(
-                                            func_name, items[idx]
+                                            cache_name, items[idx]
                                         )
                                         if key is not None:
                                             HYPER_CACHE.set(key, result)
@@ -1185,6 +1265,7 @@ class HyperBoost:
                     task_id=task_id,
                     quiet=quiet,
                     analysis=analysis,
+                    cache_name=cache_name,
                 )
                 if not success and not quiet and fallback_reason:
                     print(
@@ -1201,7 +1282,7 @@ class HyperBoost:
                     try:
                         result = func(item)
                         if use_cache:
-                            key = _safe_make_cache_key(func_name, items[idx])
+                            key = _safe_make_cache_key(cache_name, items[idx])
                             if key is not None:
                                 HYPER_CACHE.set(key, result)
                         return (idx, result, None)

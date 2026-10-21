@@ -93,11 +93,30 @@ class HyperValidator(ast.NodeVisitor):
         elif isinstance(node.ctx, ast.Store):
             self.scope_stack[-1].defined_names.add(node.id)
 
+    def _visit_annotation(self, node) -> None:
+        """Visit an annotation, counting names used inside string annotations."""
+        self.visit(node)
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                try:
+                    parsed = ast.parse(sub.value.strip(), mode="eval")
+                except SyntaxError:
+                    continue
+                for name_node in ast.walk(parsed):
+                    if isinstance(name_node, ast.Name):
+                        self.all_used_identifiers.add(name_node.id)
+
+    def visit_AnnAssign(self, node) -> None:
+        self._visit_annotation(node.annotation)
+        self.visit(node.target)
+        if node.value is not None:
+            self.visit(node.value)
+
     def visit_FunctionDef(self, node) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
         if node.returns:
-            self.visit(node.returns)
+            self._visit_annotation(node.returns)
         for default in node.args.defaults:
             self.visit(default)
             if isinstance(default, (ast.List, ast.Dict, ast.Set)):
@@ -115,7 +134,7 @@ class HyperValidator(ast.NodeVisitor):
             all_args.append(node.args.kwarg)
         for arg in all_args:
             if arg.annotation:
-                self.visit(arg.annotation)
+                self._visit_annotation(arg.annotation)
         self.scope_stack[-1].defined_names.add(node.name)
         self.scope_stack.append(Scope())
         for arg in all_args:

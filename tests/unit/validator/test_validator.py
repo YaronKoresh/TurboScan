@@ -105,6 +105,36 @@ print(os.name)
         assert "sys" in unused
         assert "os" not in unused
 
+    def test_string_annotations_count_as_usage(self, validator) -> None:
+        """Names used only inside string annotations are not unused imports."""
+        code = """
+from collections import OrderedDict, deque
+from typing import List, Optional, Set
+
+def f(x: "OrderedDict") -> "Optional[deque]":
+    return None
+
+y: "List[int]" = []
+z: Set["int"] = set()
+unused_name = 1
+        """
+        errors, _ = self.validate_code(validator, code)
+        assert errors == []
+        unused = validator.get_unused_imports()
+        assert unused == []
+
+    def test_unused_import_still_reported_with_annotations(
+        self, validator
+    ) -> None:
+        code = """
+from collections import OrderedDict, deque
+
+def f(x: "OrderedDict") -> None:
+    return None
+        """
+        self.validate_code(validator, code)
+        assert validator.get_unused_imports() == ["deque"]
+
     def test_tuple_unpacking(self, validator) -> None:
         """Should handle complex unpacking assignments."""
         code = """

@@ -84,7 +84,7 @@ class HyperCache:
                 return (True, val)
 
         l2 = self.l2_cache
-        if l2 and key in l2:
+        if l2 is not None and key in l2:
             val = l2[key]
             with self._lock:
                 self._promote_to_l1(key, val)
@@ -100,7 +100,7 @@ class HyperCache:
         with self._lock:
             self._promote_to_l1(key, value)
         l2 = self.l2_cache
-        if l2:
+        if l2 is not None:
             with contextlib.suppress(Exception):
                 l2[key] = value
 

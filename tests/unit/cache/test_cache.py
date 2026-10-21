@@ -216,3 +216,16 @@ class TestHyperCache:
             cache.set(f"k{i}", f"v{i}")
 
         assert len(cache.l1_cache) <= cache.l1_max
+
+    def test_entry_evicted_from_l1_is_served_from_l2(self, cache) -> None:
+        """An entry pushed out of L1 must still be found in the disk tier."""
+        if cache.l2_cache is None:
+            pytest.skip("diskcache is not installed")
+        cache.l1_max = 4
+        for i in range(10):
+            cache.set(f"key{i}", f"val{i}")
+
+        assert len(cache.l2_cache) > 0
+        found, val = cache.get("key0")
+        assert found is True
+        assert val == "val0"

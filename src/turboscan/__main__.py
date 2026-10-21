@@ -18,16 +18,31 @@ from turboscan import (
 if RICH_AVAIL:
     from rich.table import Table
 
+HELP_EXAMPLES = """
+Examples:
+  python -m turboscan run script.py          Run with full optimization
+  python -m turboscan run --fast script.py   Skip audit for faster startup
+  python -m turboscan run script.py a b      Pass a and b to the script
+  python -m turboscan audit .                Audit current directory
+  python -m turboscan audit /path/to/project Audit specific project
+
+Options of run must come before the script. Everything after the script is
+passed to the script unchanged.
+"""
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
+        prog="python -m turboscan",
         description="TurboScan - Maximum Performance Python Execution",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="\nExamples:\n  turboscan.py run script.py          Run with full optimization\n  turboscan.py run script.py --fast   Skip audit for faster startup\n  turboscan.py audit .                Audit current directory\n  turboscan.py audit /path/to/project Audit specific project\n        ",
+        epilog=HELP_EXAMPLES,
     )
     subparsers = parser.add_subparsers(dest="command")
     run_parser = subparsers.add_parser(
-        "run", help="Run a Python script with HYPER optimization"
+        "run",
+        help="Run a Python script with HYPER optimization",
+        usage="%(prog)s [options] script [script_args ...]",
     )
     run_parser.add_argument("script", help="Script to execute")
     run_parser.add_argument(

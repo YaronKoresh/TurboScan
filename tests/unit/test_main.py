@@ -165,3 +165,55 @@ class TestTurboScanMain:
                 mock_parse.return_value = MagicMock(command="weird_cmd")
                 main()
                 mock_help.assert_called()
+
+
+class TestHelpExamples:
+    @staticmethod
+    def _example_commands():
+        from turboscan.__main__ import HELP_EXAMPLES
+
+        prefix = "python -m turboscan "
+        commands = []
+        for line in HELP_EXAMPLES.splitlines():
+            line = line.strip()
+            if line.startswith(prefix):
+                text = line[len(prefix) :]
+                commands.append(text.split("  ", 1)[0].split())
+        return commands
+
+    def test_every_run_example_does_what_its_description_says(self) -> None:
+        run_examples = [c for c in self._example_commands() if c[0] == "run"]
+        assert len(run_examples) == 3
+
+        for command in run_examples:
+            with patch.object(sys, "argv", ["turboscan", *command]), patch(
+                "turboscan.__main__.HyperExecutor"
+            ) as mock_exec_cls:
+                main()
+                script_argv = list(sys.argv)
+
+            _, kwargs = mock_exec_cls.call_args
+            expect_fast = "--fast" in command
+            assert kwargs["audit_first"] is (not expect_fast), command
+            script_index = command.index("script.py")
+            assert script_argv == ["script.py", *command[script_index + 1 :]]
+
+    def test_help_text_names_the_real_entry_point(self, capsys) -> None:
+        with patch.object(sys, "argv", ["turboscan", "--help"]), pytest.raises(
+            SystemExit
+        ):
+            main()
+        out = capsys.readouterr().out
+        assert "turboscan.py" not in out
+        assert "python -m turboscan run --fast script.py" in out
+        assert "passed to the script unchanged" in out
+
+    def test_options_after_the_script_belong_to_the_script(self) -> None:
+        with patch.object(
+            sys, "argv", ["turboscan", "run", "script.py", "--fast"]
+        ), patch("turboscan.__main__.HyperExecutor") as mock_exec_cls:
+            main()
+            script_argv = list(sys.argv)
+
+        assert mock_exec_cls.call_args.kwargs["audit_first"] is True
+        assert script_argv == ["script.py", "--fast"]

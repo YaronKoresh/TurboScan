@@ -8,6 +8,12 @@ class BloomFilter:
     def __init__(
         self, capacity: int = 100000, error_rate: float = 0.01
     ) -> None:
+        if isinstance(capacity, bool) or not isinstance(capacity, int):
+            raise TypeError("capacity must be an integer")
+        if capacity < 1:
+            raise ValueError("capacity must be at least 1")
+        if not 0.0 < error_rate < 1.0:
+            raise ValueError("error_rate must be between 0 and 1, exclusive")
         self.capacity = capacity
         self.error_rate = error_rate
         self.bit_count = self._optimal_bits(capacity, error_rate)
@@ -18,7 +24,7 @@ class BloomFilter:
     def _optimal_bits(n: int, p: float) -> int:
         import math
 
-        return int(-n * math.log(p) / math.log(2) ** 2)
+        return max(1, int(-n * math.log(p) / math.log(2) ** 2))
 
     @staticmethod
     def _optimal_hashes(m: int, n: int) -> int:

@@ -21,6 +21,29 @@ class TestBloomFilter:
 
         assert "not_there" not in bf
 
+    @pytest.mark.parametrize("capacity", [0, -5])
+    def test_rejects_non_positive_capacity(self, capacity: int) -> None:
+        with pytest.raises(ValueError, match="capacity"):
+            BloomFilter(capacity=capacity)
+
+    @pytest.mark.parametrize(
+        "error_rate", [0, 1, 1.5, -0.1, float("nan"), float("inf")]
+    )
+    def test_rejects_error_rate_outside_open_unit_interval(
+        self, error_rate: float
+    ) -> None:
+        with pytest.raises(ValueError, match="error_rate"):
+            BloomFilter(capacity=100, error_rate=error_rate)
+
+    def test_rejects_non_integer_capacity(self) -> None:
+        with pytest.raises(TypeError, match="capacity"):
+            BloomFilter(capacity=10.5)  # type: ignore[arg-type]
+
+    def test_tiny_filter_with_loose_error_rate_still_works(self) -> None:
+        bf = BloomFilter(capacity=1, error_rate=0.99)
+        bf.add("x")
+        assert "x" in bf
+
     def test_capacity_scaling(self) -> None:
         """Verify bit array size calculation."""
         bf1 = BloomFilter(capacity=100, error_rate=0.1)
